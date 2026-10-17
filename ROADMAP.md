@@ -1,7 +1,20 @@
 # Kingdom of Chess — Tournament Module · Roadmap & Checklist
 
-> Budget: 48h max. Priority order is from the brief: **live match loop first**, then the tournament admin around it.
+> Budget: 48h max (started 17/10/2026). Priority order is from the brief: **live match loop first**, then the tournament admin around it.
 > Golden path to always keep working: **join a tournament → play a match → see it on the leaderboard**.
+
+## Progress
+
+| Phase | Status |
+|---|---|
+| 0 · Setup | ✅ Done |
+| 1 · Data model & auth | ✅ Done |
+| 2 · Tournaments | ⏳ Next |
+| 3 · Matchmaking | ⬜ Not started (DB tables ready) |
+| 4 · Live match ★ | ⬜ Not started (DB tables ready) |
+| 5 · Leaderboard & stats | ⬜ Not started |
+| 6 · Quality | 🟡 Partly (shared loading/error/empty components exist) |
+| 7 · README & submission | ⬜ Not started |
 
 ---
 
@@ -10,60 +23,88 @@
 ```
 apps/
   api/   NestJS 11 · Drizzle + Postgres · Socket.IO · class-validator   (port 4000)
-  web/   Next.js App Router · React 19 · Tailwind + shadcn/ui · TanStack Query · socket.io-client  (port 3000)
-docker-compose.yml  → postgres + api + web
+  web/   Next.js 15 App Router · React 19 · Tailwind + shadcn/ui · TanStack Query · socket.io-client  (port 3000)
+docker-compose.yml  → postgres (host port 5440) + api + web
 ```
 
 **Key decisions (to be explained in README → Decisions & trade-offs):**
 
 | Area | Decision |
 |---|---|
-| Repo | npm-workspaces monorepo (`apps/api`, `apps/web`) |
-| Auth | Email + bcrypt password → JWT in `httpOnly` cookie (`access_token`). `JwtAuthGuard` + `RolesGuard` (`@Roles('coach')`). Socket handshake reads the same cookie. |
-| API | URI versioning `/api/v1/...`. Envelope: `{ success, data }` / `{ success:false, error:{ code, message, details } }` via global interceptor + exception filter. `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })`. |
+| Repo | npm-workspaces monorepo (`apps/api`, `apps/web`) — one install, one lockfile, same `chess.js` version on client and server |
+| Auth | Email + bcrypt password → JWT in `httpOnly` cookie (`access_token`). Global `JwtAuthGuard` (opt out with `@Public()`) + global `RolesGuard` (`@Roles('coach')`). Socket handshake will read the same cookie. |
+| Cookie / CORS | Web proxies `/api/*` to the API via a Next rewrite → cookie is first-party, no CORS for REST. CORS (with credentials) only needed for Socket.IO. |
+| API | URI versioning `/api/v1/...`. Envelope: `{ success, data }` / `{ success:false, error:{ statusCode, code, message, details }, path, timestamp }` via global interceptor + exception filter. `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })`. Postgres errors mapped (unique → 409, check → 400). |
+| Config | Env validated with class-validator at boot — the API refuses to start on missing/invalid env. |
 | Game state | **Server-authoritative**: server holds a `chess.js` instance per live match, validates every move + turn, owns the clock. Client only *proposes* moves. |
-| Clock | Server stores `whiteMs`, `blackMs`, `turnStartedAt`. Remaining time = stored − (now − turnStartedAt). A server-side timeout per match fires flag-fall. Clients render from server snapshots and tick locally between them. |
-| Persistence | `fen` + `pgn` + clocks written to `matches` on every move → refresh/reconnect restores board & clock. |
-| Matchmaking | Per-tournament FIFO queue. Pairing done in a DB transaction with a conditional update (`current_match_id IS NULL`) so a player can **never be double-booked**, even with two tabs / races. |
-| Scoring | Win 1 · Draw ½ · Loss 0 (stored as half-points integers to avoid float issues). |
+| Clock | `matches.white_time_ms`, `black_time_ms`, `turn_started_at`. Remaining = stored − (now − turnStartedAt). Server-side timeout per match fires flag-fall. Time control is **snapshotted** on the match so editing the tournament can't change a live game. |
+| Persistence | `fen` + `pgn` + `ply` + clocks written to `matches` on every move → refresh/reconnect restores board & clock. Every move also appended to `match_moves`. |
+| Matchmaking | Durable `matchmaking_queue` table (one row per waiting player, `user_id` unique). Pairing with `SELECT … FOR UPDATE SKIP LOCKED` (FIFO by `enqueued_at`). |
+| No double-booking | `active_players` table with `user_id` as **primary key** — inserted in the same transaction that creates the match. A second concurrent pairing for the same player hits a unique violation and rolls back. Rows deleted when the match ends. |
+| Move races | `UNIQUE(match_id, ply)` on `match_moves` + `ply` as optimistic version → two racing writes for the same move can't both land. |
+| Scoring | Win 1 · Draw ½ · Loss 0, computed from completed matches (single source of truth, no stored points to drift). |
 | Tiebreak | Points → Sonneborn-Berger → number of wins → head-to-head → name. |
 | Join rule | Students self-join tournaments with status `open`. Queueing allowed when `open`/`ongoing` and participant. |
 
 ---
 
-## Phase 0 — Setup (≈2h)
-- [x] git init, `.gitignore`, monorepo with npm workspaces
-- [x] Scaffold NestJS 11 API (TS strict)
-- [x] Scaffold Next.js App Router web (React 19, TS strict, Tailwind)
-- [x] shadcn/ui init + base components (button, card, input, label, table, badge, dialog, select, sonner/toast, skeleton)
-- [x] Install deps (drizzle, pg, socket.io, chess.js, react-chessboard, TanStack Query, …)
-- [x] `docker-compose.yml` (postgres + api + web) + Dockerfiles — not yet run locally (no Docker installed)
-- [x] `.env.example` for root / api / web
-- [x] Postgres reachable — Docker (WSL) on host port 5440
+## Phase 0 — Setup ✅
+- [x] git init, `.gitignore`, `.gitattributes` (LF line endings), monorepo with npm workspaces
+- [x] Scaffold NestJS 11 API — TS `strict: true`
+- [x] Scaffold Next.js 15 App Router web (React 19, TS strict, Tailwind v4)
+- [x] shadcn/ui init + base components (button, card, input, label, table, badge, dialog, select, sonner, skeleton, dropdown-menu, tabs, alert, separator, avatar)
+- [x] Install deps (drizzle, pg, socket.io, chess.js, react-chessboard, TanStack Query, bcryptjs, …) — Nest packages pinned to v11 (Nest 12 is out; brief requires 11)
+- [x] `docker-compose.yml` (postgres + api + web) + Dockerfiles (api: migrate → seed → start; web: Next standalone)
+- [x] `.env.example` for root / api / web (real `.env` files git-ignored)
+- [x] Postgres running — Docker in WSL, host port **5440** (5432/5433 taken by local Postgres 16/18 installs)
+- [ ] Full `docker compose up --build` (api + web images) verified — do before submission
 
-## Phase 1 — Data model & auth (≈5h) · Req 01
-- [x] Drizzle schema: `users`, `tournaments`, `tournament_participants`, `matches`
-- [x] Drizzle migrations generated + `db:migrate` script
-- [x] Seed: 1 coach + 4+ students (+ one sample tournament)
-- [x] `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`
-- [x] JWT httpOnly cookie, `JwtAuthGuard`, `RolesGuard`, `@CurrentUser()`
+## Phase 1 — Data model & auth ✅ · Req 01
+**Database**
+- [x] Drizzle schema — 7 tables: `users`, `tournaments`, `tournament_participants`, `matchmaking_queue`, `matches`, `active_players`, `match_moves`
+- [x] `created_at` / `updated_at` (timestamptz) on every table, `updated_at` auto-bumped; plus domain timestamps (`last_login_at`, `joined_at`, `enqueued_at`, `started_at`, `ended_at`, `completed_at`, `turn_started_at`)
+- [x] Enums: role, tournament status, match status / result / end reason, piece colour
+- [x] Constraints: case-insensitive unique email, time-control ranges, white ≠ black, clocks ≥ 0, "completed ⇔ has result + reason + ended_at", "completed ⇔ completed_at"
+- [x] Indexes on every FK / lookup path
+- [x] Migration `0000_init.sql` generated + applied (`npm run db:migrate`)
+- [x] Seed — idempotent (safe to re-run): 1 coach + 6 students + 2 tournaments (`Weekend Blitz Cup` open 5+0, `Rapid Academy Open` draft 10+5)
+
+**API**
+- [x] `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`, `GET /api/v1/health`
+- [x] JWT httpOnly cookie (SameSite=Lax, 7-day TTL), bcrypt, timing-safe login (dummy hash for unknown emails)
+- [x] Global `JwtAuthGuard` + `RolesGuard`, `@Public()`, `@Roles()`, `@CurrentUser()`
 - [x] Response envelope interceptor + global exception filter + ValidationPipe
-- [x] Web: login page, auth context via `/me`, `middleware.ts` route protection, role-based redirects
+- [x] Env validation at boot
+- [x] Tested: health, 401 without cookie, 401 wrong password, 400 validation (incl. unknown fields), mixed-case email login, `/me`, forged token 401, logout clears cookie, 404 envelope
 
-## Phase 2 — Tournaments (≈4h) · Req 02, 03 (join)
+**Web**
+- [x] Brand theme (navy / orange / cream from the brief)
+- [x] API client unwrapping the envelope into typed data / `ApiError`
+- [x] TanStack Query provider (no retries on 4xx), `useMe` / `useLogin` / `useLogout` (clears cache on logout)
+- [x] Login page with inline errors, loading state, demo-account quick-fill
+- [x] `middleware.ts` redirects: logged-out → `/login?next=…`; wrong role → own home
+- [x] `AppShell` re-checks role against verified `/me` (frontend half of role enforcement), header nav + logout
+- [x] Shared `LoadingState` / `ListSkeleton` / `ErrorState` (with retry) / `EmptyState`
+- [x] Tested: all redirects for logged-out, student, coach through the Next proxy
+
+## Phase 2 — Tournaments ⏳ · Req 02, 03 (join)
 - [ ] Coach: CRUD tournament (name, time control `5+0`, startsAt, status draft/open/ongoing/completed)
+- [ ] Status transition rules (draft → open → ongoing → completed)
 - [ ] Student: list open/ongoing tournaments, join open one (join rules)
+- [ ] Verify students get 403 on coach-only endpoints
 - [ ] Coach UI: list, create/edit dialog, status change, delete
 - [ ] Student UI: browse + join, "my tournaments / schedule"
 
-## Phase 3 — Matchmaking (≈4h) · Req 03 ⚠️ concurrency test
+## Phase 3 — Matchmaking · Req 03 ⚠️ concurrency test
+- [x] *(schema)* `matchmaking_queue` + `active_players` tables for DB-enforced no-double-booking
 - [ ] Socket gateway with cookie-auth handshake
 - [ ] `queue:join` / `queue:leave` per tournament
 - [ ] Pair two waiting players atomically → create match → push `match:found` to both
-- [ ] One active match per player guaranteed (DB-level check + in-memory lock)
+- [ ] Clean up queue rows on disconnect / server start
 - [ ] Re-queue after game ends
 
-## Phase 4 — Live match (≈8h) · Req 04 ★ HEADLINE
+## Phase 4 — Live match ★ HEADLINE · Req 04
+- [x] *(schema)* `matches` holds fen / pgn / ply / clocks; `match_moves` log
 - [ ] `match:join` (room auth: only the 2 participants)
 - [ ] `match:move` → server validates turn + legality (chess.js) → broadcast `match:state`
 - [ ] Shared server clock, flag-fall on timeout
@@ -72,19 +113,20 @@ docker-compose.yml  → postgres + api + web
 - [ ] Result saved → leaderboard updated → `match:ended` broadcast
 - [ ] Web: board (react-chessboard), orientation by colour, clocks, PGN panel, resign button, end-of-game dialog with "Find next opponent"
 
-## Phase 5 — Leaderboard & stats (≈3h) · Req 05, 02 (stats)
+## Phase 5 — Leaderboard & stats · Req 05, 02 (stats)
 - [ ] Pure `computeStandings(participants, matches)` with tiebreaks
 - [ ] `GET /tournaments/:id/leaderboard`, `GET /tournaments/:id/matches`
 - [ ] Winner declared when tournament status = completed
 - [ ] Web: leaderboard table, per-match results, my rank, my match history
 
-## Phase 6 — Quality (≈4h) · Req 06, 07, 08
+## Phase 6 — Quality · Req 06, 07, 08
 - [ ] Unit tests: scoring/standings, join rules, move/turn validation, matchmaking pairing
-- [ ] Loading / error / empty states on every page
+- [x] Shared loading / error / empty state components
+- [ ] …used on every page
 - [ ] TanStack Query invalidation after every mutation + on socket `match:ended`
 - [ ] DD/MM/YYYY dates, IST-aware display
 
-## Phase 7 — README & submission (≈2h) · Req 09
+## Phase 7 — README & submission · Req 09
 - [ ] Setup (env, Postgres, migrations, seed, start both apps), seed credentials
 - [ ] How to play locally (two browsers / one incognito)
 - [ ] Socket event table (name → payload → direction)
@@ -98,10 +140,17 @@ docker-compose.yml  → postgres + api + web
 - [x] *(designed in)* Server-authoritative state
 - [x] *(designed in)* Reconnection — board + clock restored from DB on refresh
 - [ ] Spectator mode for coach
-- [ ] Draw offers + increment time controls (`5+3`)
+- [ ] Draw offers + increment time controls (`5+3`) — increment already stored per match
 - [ ] Standings-based matchmaking
 - [ ] Round-robin completion (everyone plays everyone once, auto-complete)
-- [ ] Move-list navigation (click a move to review)
+- [ ] Move-list navigation (click a move to review) — `match_moves.fen_after` already stored
+
+## Seed credentials
+
+| Role | Email | Password |
+|---|---|---|
+| Coach | `coach@koc.test` | `Coach@1234` |
+| Student | `aarav@koc.test`, `diya@koc.test`, `kabir@koc.test`, `meera@koc.test`, `rohan@koc.test`, `ananya@koc.test` | `Student@1234` |
 
 ## Socket events (draft — finalise in README)
 
@@ -118,5 +167,11 @@ docker-compose.yml  → postgres + api + web
 | `match:ended` | S → C | `{ matchId, result, reason, pgn }` |
 | `error` | S → C | `{ code, message }` |
 
-## Commit plan (small, meaningful)
-`chore: scaffold monorepo` → `feat(api): db schema + migrations` → `feat(api): auth` → `feat(web): login` → `feat(api): tournaments` → … → `docs: README`
+## Issues hit & how they were solved (useful for README)
+- **Nest 12 released** → `@nestjs/websockets@latest` required Nest 12; pinned all Nest packages to `^11` to match the brief.
+- **Port 5432 already used** by locally installed Postgres 16/18 → Docker Postgres exposed on host port 5440 (`DB_HOST_PORT`).
+- **`drizzle-kit` couldn't find `drizzle-orm`** (nested in `apps/api/node_modules` after incremental installs) → clean reinstall hoisted it to the root.
+- **`npm install` hung** because `npm run dev:api` was locking files in `node_modules` → always stop dev servers before installing on Windows.
+
+## Commits so far
+`docs: roadmap` → `chore(api): scaffold` → `chore(web): scaffold` → `chore: docker compose` → `chore: LF + web env` → `chore: postgres port 5440` → `feat(api): schema + migration + seed` → `feat(api): envelope + filter + env validation` → `feat(api): auth + guards` → `chore: lockfile` → `feat(web): api client + query + auth hooks` → `feat(web): login + middleware + shell`
