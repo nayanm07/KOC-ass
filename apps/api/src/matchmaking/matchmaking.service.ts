@@ -223,6 +223,7 @@ export class MatchmakingService implements OnApplicationBootstrap {
         opponent: { id: opp, name: name(opp) },
       } satisfies MatchFoundPayload);
     }
+    this.realtime.toAll(ServerEvents.TournamentUpdated, { tournamentId: m.tournamentId });
     this.logger.log(`Paired ${name(m.whiteId)} (white) vs ${name(m.blackId)} (black) → ${m.matchId}`);
   }
 }

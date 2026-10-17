@@ -26,6 +26,8 @@ export const ServerEvents = {
   MatchState: 'match:state',
   /** The game is over and the result is saved */
   MatchEnded: 'match:ended',
+  /** Broadcast to everyone: a tournament's data changed (join/leave/status/game start/end) — refetch */
+  TournamentUpdated: 'tournament:updated',
 } as const;
 
 export interface QueueJoinPayload {

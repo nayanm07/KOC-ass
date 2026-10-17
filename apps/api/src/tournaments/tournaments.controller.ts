@@ -26,6 +26,18 @@ export class TournamentsController {
     return this.tournaments.findOne(user, id);
   }
 
+  /** GET /api/v1/tournaments/:id/leaderboard — standings, winner/leader, stats */
+  @Get(':id/leaderboard')
+  leaderboard(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string) {
+    return this.tournaments.leaderboard(user, id);
+  }
+
+  /** GET /api/v1/tournaments/:id/matches — per-match results (live first) */
+  @Get(':id/matches')
+  matches(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string) {
+    return this.tournaments.matches(user, id);
+  }
+
   /* ── Coach ── */
 
   @Roles('coach')

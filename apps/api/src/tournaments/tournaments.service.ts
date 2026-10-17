@@ -17,6 +17,7 @@ import {
 import type { CreateTournamentDto } from './dto/create-tournament.dto';
 import type { ListTournamentsQuery } from './dto/list-tournaments.query';
 import type { UpdateTournamentDto } from './dto/update-tournament.dto';
+import { LeaderboardService, type LeaderboardView, type TournamentMatchRow } from './leaderboard.service';
 import {
   allowedTransitions,
   checkCanDelete,
@@ -67,6 +68,7 @@ export class TournamentsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly realtime: RealtimeService,
+    private readonly leaderboards: LeaderboardService,
   ) {}
 
   /* ───────────────────────── Reads ───────────────────────── */
@@ -105,6 +107,18 @@ export class TournamentsService {
     return { ...this.toView(row), participants };
   }
 
+  /** Standings (win 1 / draw ½ / loss 0, tiebreaks documented in standings.ts) + stats */
+  async leaderboard(viewer: AuthUser, id: string): Promise<LeaderboardView> {
+    const t = await this.findOne(viewer, id); // visibility rules (students never see drafts)
+    return this.leaderboards.leaderboard(id, t.winner);
+  }
+
+  /** Per-match results */
+  async matches(viewer: AuthUser, id: string): Promise<TournamentMatchRow[]> {
+    await this.findOne(viewer, id);
+    return this.leaderboards.tournamentMatches(id);
+  }
+
   /* ──────────────────────── Coach ──────────────────────── */
 
   async create(coach: AuthUser, dto: CreateTournamentDto): Promise<TournamentDetailView> {
@@ -120,6 +134,7 @@ export class TournamentsService {
         createdById: coach.id,
       })
       .returning({ id: tournaments.id });
+    this.announce(created.id);
     return this.findOne(coach, created.id);
   }
 
@@ -143,6 +158,7 @@ export class TournamentsService {
         })
         .where(eq(tournaments.id, id));
     });
+    this.announce(id);
     return this.findOne(coach, id);
   }
 
@@ -159,12 +175,14 @@ export class TournamentsService {
       if (v) throw violation(v);
 
       const now = new Date();
+      // Declare the winner from the final standings, atomically with the status change
+      const winnerId = to === 'completed' ? await this.leaderboards.computeWinnerId(id, tx) : undefined;
       await tx
         .update(tournaments)
         .set({
           status: to,
           ...(to === 'ongoing' && { startedAt: now }),
-          ...(to === 'completed' && { completedAt: now }),
+          ...(to === 'completed' && { completedAt: now, winnerId }),
         })
         .where(eq(tournaments.id, id));
 
@@ -183,6 +201,7 @@ export class TournamentsService {
         reason: 'tournament_closed',
       } satisfies QueueStatusPayload);
     }
+    this.announce(id);
     return this.findOne(coach, id);
   }
 
@@ -193,6 +212,7 @@ export class TournamentsService {
       if (v) throw violation(v);
       await tx.delete(tournaments).where(eq(tournaments.id, id)); // participants cascade
     });
+    this.announce(id);
     return { id, deleted: true };
   }
 
@@ -218,6 +238,7 @@ export class TournamentsService {
         throw violation({ code: 'ALREADY_JOINED', message: 'You have already joined this tournament' });
       }
     });
+    this.announce(id);
     return this.findOne(student, id);
   }
 
@@ -236,10 +257,16 @@ export class TournamentsService {
           and(eq(tournamentParticipants.tournamentId, id), eq(tournamentParticipants.userId, student.id)),
         );
     });
+    this.announce(id);
     return this.findOne(student, id);
   }
 
   /* ─────────────────────── Helpers ─────────────────────── */
+
+  /** Tell every open client this tournament changed, so lists / leaderboards refetch */
+  private announce(tournamentId: string) {
+    this.realtime.toAll(ServerEvents.TournamentUpdated, { tournamentId });
+  }
 
   /** Exposed for matchmaking: is this user a participant of the tournament? */
   async isParticipant(exec: Executor, tournamentId: string, userId: string): Promise<boolean> {

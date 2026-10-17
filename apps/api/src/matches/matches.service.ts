@@ -1,5 +1,5 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { AuthUser } from '../auth/auth.types';
 import { DRIZZLE, type Database } from '../db/db.module';
@@ -33,6 +33,20 @@ export interface MatchView {
   yourColor: Color | null;
 }
 
+export interface MyMatchRow {
+  id: string;
+  tournament: { id: string; name: string };
+  color: Color;
+  opponent: { id: string; name: string };
+  status: Match['status'];
+  /** From my point of view */
+  outcome: 'win' | 'loss' | 'draw' | null;
+  endReason: Match['endReason'];
+  moves: number;
+  startedAt: Date;
+  endedAt: Date | null;
+}
+
 export const matchNotFound = () =>
   new NotFoundException({ code: 'MATCH_NOT_FOUND', message: 'Match not found' });
 
@@ -58,6 +72,49 @@ export class MatchesService {
     if (!colorOf(m, viewer.id) && viewer.role !== 'coach') {
       throw new ForbiddenException({ code: 'NOT_A_PARTICIPANT', message: 'You are not playing in this match' });
     }
+  }
+
+  /** My games across all tournaments, newest first */
+  async myMatches(userId: string): Promise<MyMatchRow[]> {
+    const white = alias(users, 'white');
+    const black = alias(users, 'black');
+    const rows = await this.db
+      .select({
+        match: matches,
+        tournamentName: tournaments.name,
+        whiteName: white.name,
+        blackName: black.name,
+      })
+      .from(matches)
+      .innerJoin(tournaments, eq(tournaments.id, matches.tournamentId))
+      .innerJoin(white, eq(white.id, matches.whiteId))
+      .innerJoin(black, eq(black.id, matches.blackId))
+      .where(or(eq(matches.whiteId, userId), eq(matches.blackId, userId)))
+      .orderBy(desc(matches.startedAt));
+
+    return rows.map(({ match: m, tournamentName, whiteName, blackName }) => {
+      const color: Color = m.whiteId === userId ? 'white' : 'black';
+      const outcome =
+        m.result === null
+          ? null
+          : m.result === 'draw'
+            ? 'draw'
+            : (m.result === 'white_win') === (color === 'white')
+              ? 'win'
+              : 'loss';
+      return {
+        id: m.id,
+        tournament: { id: m.tournamentId, name: tournamentName },
+        color,
+        opponent: color === 'white' ? { id: m.blackId, name: blackName } : { id: m.whiteId, name: whiteName },
+        status: m.status,
+        outcome,
+        endReason: m.endReason,
+        moves: m.ply,
+        startedAt: m.startedAt,
+        endedAt: m.endedAt,
+      };
+    });
   }
 
   /** The viewer's in-progress match, if any (used to resume after a refresh) */

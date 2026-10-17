@@ -284,6 +284,7 @@ export class GameService implements OnApplicationBootstrap, OnApplicationShutdow
       };
       // Room + both players' personal rooms (Socket.IO de-duplicates sockets in several rooms)
       this.realtime.toRooms([matchRoom(matchId), userRoom(m.whiteId), userRoom(m.blackId)], ServerEvents.MatchEnded, payload);
+      this.realtime.toAll(ServerEvents.TournamentUpdated, { tournamentId: m.tournamentId });
       this.logger.log(`Match ${matchId} ended: ${m.result} by ${m.endReason}`);
     } else {
       this.armFlagTimer(m);

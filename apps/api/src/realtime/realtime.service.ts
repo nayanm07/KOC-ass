@@ -27,6 +27,12 @@ export class RealtimeService {
     this.server.to(matchRoom(matchId)).emit(event, payload);
   }
 
+  /** Every connected client (tiny invalidation pings only — no private data) */
+  toAll(event: string, payload: unknown) {
+    if (!this.server) return;
+    this.server.emit(event, payload);
+  }
+
   /** Several rooms at once — a socket in more than one of them still gets the event once */
   toRooms(rooms: string[], event: string, payload: unknown) {
     if (!this.server) return this.logger.warn(`Socket server not ready; dropped ${event}`);

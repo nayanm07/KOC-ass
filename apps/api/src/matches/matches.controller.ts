@@ -7,6 +7,12 @@ import { MatchesService } from './matches.service';
 export class MatchesController {
   constructor(private readonly matches: MatchesService) {}
 
+  /** GET /api/v1/matches — my match history across tournaments */
+  @Get()
+  mine(@CurrentUser() user: AuthUser) {
+    return this.matches.myMatches(user.id);
+  }
+
   /** GET /api/v1/matches/current — `{ matchId }` of my in-progress game, or `{ matchId: null }` */
   @Get('current')
   async current(@CurrentUser() user: AuthUser) {
