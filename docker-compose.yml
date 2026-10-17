@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chess}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chess}
+      POSTGRES_DB: ${POSTGRES_DB:-kingdom_chess}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chess} -d ${POSTGRES_DB:-kingdom_chess}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-chess}:${POSTGRES_PASSWORD:-chess}@db:5432/${POSTGRES_DB:-kingdom_chess}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret}
+      JWT_EXPIRES_IN: 7d
+      WEB_ORIGIN: http://localhost:3000
+      COOKIE_SECURE: "false"
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
