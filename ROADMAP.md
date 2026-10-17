@@ -10,8 +10,8 @@
 | 0 · Setup | ✅ Done |
 | 1 · Data model & auth | ✅ Done |
 | 2 · Tournaments | ✅ Done |
-| 3 · Matchmaking | ⏳ Next (DB tables ready) |
-| 4 · Live match ★ | ⬜ Not started (DB tables ready) |
+| 3 · Matchmaking | ✅ Done |
+| 4 · Live match ★ | ⏳ Next (DB tables, clock maths, `GET /matches/:id` ready) |
 | 5 · Leaderboard & stats | ⬜ Not started |
 | 6 · Quality | 🟡 Partly (shared loading/error/empty components exist) |
 | 7 · README & submission | ⬜ Not started |
@@ -108,13 +108,20 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - [x] DD/MM/YYYY dates in viewer's timezone (stored UTC)
 - [x] Production build passes
 
-## Phase 3 — Matchmaking · Req 03 ⚠️ concurrency test
+## Phase 3 — Matchmaking ✅ · Req 03 ⚠️ concurrency test
 - [x] *(schema)* `matchmaking_queue` + `active_players` tables for DB-enforced no-double-booking
-- [ ] Socket gateway with cookie-auth handshake
-- [ ] `queue:join` / `queue:leave` per tournament
-- [ ] Pair two waiting players atomically → create match → push `match:found` to both
-- [ ] Clean up queue rows on disconnect / server start
-- [ ] Re-queue after game ends
+- [x] Socket gateway with cookie-auth handshake (unauthenticated / forged → `UNAUTHENTICATED`)
+- [x] Per-user rooms (`user:<id>`) so every open tab gets pushes
+- [x] `queue:join` / `queue:leave` with acks in the REST envelope, payloads validated by class-validator DTOs
+- [x] Rules: students only, must be a participant, tournament must be `ongoing`, not already in a game (`ALREADY_IN_MATCH` + matchId)
+- [x] Pairing: FIFO, random colours, serialised per tournament with `pg_advisory_xact_lock`; match + `active_players` + queue removal in one transaction
+- [x] `match:found` pushed to both players → web auto-navigates to `/match/:id`
+- [x] Queue cleanup: on last-tab disconnect, on server start, and when a tournament completes (players notified)
+- [x] `GET /matches/current` (resume), `GET /matches/:id` (players + coaches; others 403) with live server clock
+- [x] Pure + unit-tested: `pickPair`, `assignColors`, clock maths
+- [x] **Concurrency verified**: 6 students queue simultaneously → exactly 3 matches, each player exactly one `match:found` — 21/21 checks × 6 runs
+- [x] Web: socket provider, live/offline dot, Find opponent → searching (timer) → cancel, Return to your game
+- [ ] Re-queue after game ends (button on the end-of-game dialog — Phase 4)
 
 ## Phase 4 — Live match ★ HEADLINE · Req 04
 - [x] *(schema)* `matches` holds fen / pgn / ply / clocks; `match_moves` log
@@ -171,8 +178,8 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 |---|---|---|
 | `queue:join` | C → S | `{ tournamentId }` |
 | `queue:leave` | C → S | `{ tournamentId }` |
-| `queue:status` | S → C | `{ tournamentId, waiting: boolean }` |
-| `match:found` | S → C | `{ matchId, tournamentId, color }` |
+| `queue:status` | S → C | `{ waiting: true, tournamentId, since }` \| `{ waiting: false, tournamentId, reason? }` |
+| `match:found` | S → C | `{ matchId, tournamentId, color, opponent: { id, name } }` |
 | `match:join` | C → S | `{ matchId }` |
 | `match:state` | S → C | `{ matchId, fen, pgn, turn, whiteMs, blackMs, serverNow, status, lastMove }` |
 | `match:move` | C → S | `{ matchId, from, to, promotion? }` |
