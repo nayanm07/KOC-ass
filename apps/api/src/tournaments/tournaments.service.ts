@@ -2,6 +2,8 @@ import { ConflictException, Inject, Injectable, NotFoundException } from '@nestj
 import { and, asc, eq, getTableColumns, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { AuthUser } from '../auth/auth.types';
+import { ServerEvents, type QueueStatusPayload } from '../realtime/events';
+import { RealtimeService } from '../realtime/realtime.service';
 import { DRIZZLE, type Database } from '../db/db.module';
 import {
   matches,
@@ -62,7 +64,10 @@ const violation = (v: RuleViolation) => new ConflictException(v);
 
 @Injectable()
 export class TournamentsService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   /* ───────────────────────── Reads ───────────────────────── */
 
@@ -142,7 +147,7 @@ export class TournamentsService {
   }
 
   async updateStatus(coach: AuthUser, id: string, to: TournamentStatus): Promise<TournamentDetailView> {
-    await this.db.transaction(async (tx) => {
+    const dequeued = await this.db.transaction(async (tx) => {
       // FOR UPDATE: serialises against concurrent joins (which take FOR SHARE on the same row)
       const t = await this.lockTournament(tx, id, 'update');
       const [participantCount, liveMatchCount] = await Promise.all([
@@ -164,10 +169,20 @@ export class TournamentsService {
         .where(eq(tournaments.id, id));
 
       // Nobody can keep waiting for a game in a finished tournament
-      if (to === 'completed') {
-        await tx.delete(matchmakingQueue).where(eq(matchmakingQueue.tournamentId, id));
-      }
+      if (to !== 'completed') return [];
+      return tx
+        .delete(matchmakingQueue)
+        .where(eq(matchmakingQueue.tournamentId, id))
+        .returning({ userId: matchmakingQueue.userId });
     });
+
+    for (const { userId } of dequeued) {
+      this.realtime.toUser(userId, ServerEvents.QueueStatus, {
+        waiting: false,
+        tournamentId: id,
+        reason: 'tournament_closed',
+      } satisfies QueueStatusPayload);
+    }
     return this.findOne(coach, id);
   }
 
