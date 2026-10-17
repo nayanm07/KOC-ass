@@ -42,13 +42,13 @@ docker-compose.yml  → postgres + api + web
 - [x] Postgres reachable — Docker (WSL) on host port 5440
 
 ## Phase 1 — Data model & auth (≈5h) · Req 01
-- [ ] Drizzle schema: `users`, `tournaments`, `tournament_participants`, `matches`
-- [ ] Drizzle migrations generated + `db:migrate` script
-- [ ] Seed: 1 coach + 4+ students (+ one sample tournament)
-- [ ] `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`
-- [ ] JWT httpOnly cookie, `JwtAuthGuard`, `RolesGuard`, `@CurrentUser()`
-- [ ] Response envelope interceptor + global exception filter + ValidationPipe
-- [ ] Web: login page, auth context via `/me`, `middleware.ts` route protection, role-based redirects
+- [x] Drizzle schema: `users`, `tournaments`, `tournament_participants`, `matches`
+- [x] Drizzle migrations generated + `db:migrate` script
+- [x] Seed: 1 coach + 4+ students (+ one sample tournament)
+- [x] `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`
+- [x] JWT httpOnly cookie, `JwtAuthGuard`, `RolesGuard`, `@CurrentUser()`
+- [x] Response envelope interceptor + global exception filter + ValidationPipe
+- [x] Web: login page, auth context via `/me`, `middleware.ts` route protection, role-based redirects
 
 ## Phase 2 — Tournaments (≈4h) · Req 02, 03 (join)
 - [ ] Coach: CRUD tournament (name, time control `5+0`, startsAt, status draft/open/ongoing/completed)
