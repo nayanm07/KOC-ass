@@ -1,10 +1,10 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { EmptyState, ErrorState, LoadingState } from "@/components/states";
+import { ErrorState, LoadingState } from "@/components/states";
 import { CoachTournamentActions } from "@/components/tournaments/coach-actions";
+import { LeaderboardCard, MatchResultsCard, TournamentStats, WinnerBanner } from "@/components/tournaments/leaderboard";
 import { TournamentDetailView } from "@/components/tournaments/tournament-detail";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTournament } from "@/hooks/use-tournaments";
 
 export default function CoachTournamentPage() {
@@ -15,27 +15,26 @@ export default function CoachTournamentPage() {
   if (tournament.isError) return <ErrorState error={tournament.error} onRetry={() => tournament.refetch()} />;
 
   const t = tournament.data;
+  const started = t.status === "ongoing" || t.status === "completed";
   return (
     <TournamentDetailView
       tournament={t}
       backHref="/coach"
       actions={<CoachTournamentActions tournament={t} redirectAfterDelete="/coach" />}
     >
-      <Card>
-        <CardHeader>
-          <CardTitle>Standings &amp; results</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <EmptyState
-            title="No games played yet"
-            description={
-              t.status === "ongoing"
-                ? "Players are being paired automatically — results will appear here."
-                : "Start the tournament to let players find opponents."
-            }
+      <WinnerBanner tournament={t} />
+      {started && (
+        <>
+          <TournamentStats tournamentId={t.id} />
+          <LeaderboardCard tournament={t} />
+          {/* Coaches can watch any live game and review any finished one */}
+          <MatchResultsCard
+            tournamentId={t.id}
+            canOpen={() => true}
+            emptyHint="Players are paired automatically when they click “Find opponent”."
           />
-        </CardContent>
-      </Card>
+        </>
+      )}
     </TournamentDetailView>
   );
 }

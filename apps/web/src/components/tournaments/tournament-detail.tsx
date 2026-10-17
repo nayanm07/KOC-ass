@@ -49,41 +49,44 @@ export function TournamentDetailView({
 
       {children}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Players ({t.participants.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {t.participants.length === 0 ? (
-            <EmptyState
-              title="No players yet"
-              description={t.status === "open" ? "Students can join while registration is open." : undefined}
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Player</TableHead>
-                  <TableHead className="text-right">Joined</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {t.participants.map((p, i) => (
-                  <TableRow key={p.userId} className={p.userId === highlightUserId ? "bg-accent/60" : undefined}>
-                    <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-                    <TableCell className="font-medium">
-                      {p.name}
-                      {p.userId === highlightUserId && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">{formatDateTime(p.joinedAt)}</TableCell>
+      {/* Once play starts, the leaderboard lists every player */}
+      {(t.status === "draft" || t.status === "open") && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Players ({t.participants.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {t.participants.length === 0 ? (
+              <EmptyState
+                title="No players yet"
+                description={t.status === "open" ? "Students can join while registration is open." : undefined}
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">#</TableHead>
+                    <TableHead>Player</TableHead>
+                    <TableHead className="text-right">Joined</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {t.participants.map((p, i) => (
+                    <TableRow key={p.userId} className={p.userId === highlightUserId ? "bg-accent/60" : undefined}>
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="font-medium">
+                        {p.name}
+                        {p.userId === highlightUserId && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">{formatDateTime(p.joinedAt)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -75,3 +75,47 @@ export interface MatchView {
   endedAt: string | null;
   yourColor: Color | null;
 }
+
+export interface StandingRow {
+  rank: number;
+  userId: string;
+  name: string;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  points: number;
+  sonnebornBerger: number;
+}
+
+export interface Leaderboard {
+  standings: StandingRow[];
+  winner: { userId: string; name: string } | null;
+  leader: { userId: string; name: string } | null;
+  stats: { players: number; gamesPlayed: number; liveGames: number; whiteWins: number; blackWins: number; draws: number };
+}
+
+export interface TournamentMatchRow {
+  id: string;
+  white: { id: string; name: string };
+  black: { id: string; name: string };
+  status: "ongoing" | "completed";
+  result: MatchResult | null;
+  endReason: MatchEndReason | null;
+  moves: number;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface MyMatchRow {
+  id: string;
+  tournament: { id: string; name: string };
+  color: Color;
+  opponent: { id: string; name: string };
+  status: "ongoing" | "completed";
+  outcome: "win" | "loss" | "draw" | null;
+  endReason: MatchEndReason | null;
+  moves: number;
+  startedAt: string;
+  endedAt: string | null;
+}

@@ -68,6 +68,11 @@ export function SocketProvider({ userId, children }: { userId: string; children:
       router.push(`/match/${m.matchId}`);
     });
 
+    // Someone joined/left, a game started or ended, or the status changed — refetch tournament data
+    s.on(ServerEvents.TournamentUpdated, () => {
+      void qc.invalidateQueries({ queryKey: ["tournaments"] });
+    });
+
     // A game of mine finished: standings, histories and "current match" are now stale
     s.on(ServerEvents.MatchEnded, () => {
       void qc.invalidateQueries({ queryKey: ["matches"] });

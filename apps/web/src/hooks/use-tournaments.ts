@@ -3,7 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, errorMessage } from "@/lib/api";
-import type { Tournament, TournamentDetail, TournamentInput, TournamentStatus } from "@/lib/types";
+import type {
+  Leaderboard,
+  Tournament,
+  TournamentDetail,
+  TournamentInput,
+  TournamentMatchRow,
+  TournamentStatus,
+} from "@/lib/types";
 
 export interface TournamentFilters {
   status?: TournamentStatus[];
@@ -14,6 +21,8 @@ export const tournamentKeys = {
   all: ["tournaments"] as const,
   list: (f: TournamentFilters = {}) => [...tournamentKeys.all, "list", f] as const,
   detail: (id: string) => [...tournamentKeys.all, "detail", id] as const,
+  leaderboard: (id: string) => [...tournamentKeys.all, "leaderboard", id] as const,
+  matches: (id: string) => [...tournamentKeys.all, "matches", id] as const,
 };
 
 function toQuery(f: TournamentFilters): string {
@@ -35,6 +44,21 @@ export function useTournament(id: string) {
   return useQuery({
     queryKey: tournamentKeys.detail(id),
     queryFn: () => api<TournamentDetail>(`/tournaments/${id}`),
+  });
+}
+
+/** Live data: refreshed instantly by the `tournament:updated` socket ping (see SocketProvider) */
+export function useLeaderboard(id: string) {
+  return useQuery({
+    queryKey: tournamentKeys.leaderboard(id),
+    queryFn: () => api<Leaderboard>(`/tournaments/${id}/leaderboard`),
+  });
+}
+
+export function useTournamentMatches(id: string) {
+  return useQuery({
+    queryKey: tournamentKeys.matches(id),
+    queryFn: () => api<TournamentMatchRow[]>(`/tournaments/${id}/matches`),
   });
 }
 

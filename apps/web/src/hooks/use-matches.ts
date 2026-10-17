@@ -2,11 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { MatchView } from "@/lib/types";
+import type { MatchView, MyMatchRow } from "@/lib/types";
 
 export const matchKeys = {
   all: ["matches"] as const,
   current: () => [...matchKeys.all, "current"] as const,
+  mine: () => [...matchKeys.all, "mine"] as const,
   detail: (id: string) => [...matchKeys.all, "detail", id] as const,
 };
 
@@ -17,6 +18,13 @@ export function useCurrentMatch(enabled = true) {
     queryFn: () => api<{ matchId: string | null }>("/matches/current"),
     enabled,
     staleTime: 0,
+  });
+}
+
+export function useMyMatches() {
+  return useQuery({
+    queryKey: matchKeys.mine(),
+    queryFn: () => api<MyMatchRow[]>("/matches"),
   });
 }
 

@@ -16,6 +16,7 @@ export const ServerEvents = {
   MatchFound: "match:found",
   MatchState: "match:state",
   MatchEnded: "match:ended",
+  TournamentUpdated: "tournament:updated",
 } as const;
 
 export interface MatchEnded {
