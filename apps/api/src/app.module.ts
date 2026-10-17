@@ -9,9 +9,10 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
 import { validateEnv } from './config/env.validation';
 import { DbModule } from './db/db.module';
+import { TournamentsModule } from './tournaments/tournaments.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), DbModule, AuthModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), DbModule, AuthModule, TournamentsModule],
   controllers: [AppController],
   providers: [
     // Order matters: authenticate first, then check role
