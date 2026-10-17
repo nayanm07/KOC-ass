@@ -16,6 +16,7 @@ import {
   type QueueStatusPayload,
 } from '../realtime/events';
 import { RealtimeService } from '../realtime/realtime.service';
+import { GameService } from '../matches/game.service';
 import { checkCanQueue } from '../tournaments/tournament.rules';
 import { TournamentsService } from '../tournaments/tournaments.service';
 import { assignColors, pickPair } from './pairing';
@@ -35,6 +36,7 @@ export class MatchmakingService implements OnApplicationBootstrap {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly tournamentsService: TournamentsService,
     private readonly realtime: RealtimeService,
+    private readonly game: GameService,
   ) {}
 
   /**
@@ -192,6 +194,7 @@ export class MatchmakingService implements OnApplicationBootstrap {
 
       if (!match) break;
       created.push(match);
+      await this.game.startClock(match.matchId); // server-side flag timer for white's first move
       await this.announce(match);
     }
     return created;

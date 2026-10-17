@@ -7,6 +7,14 @@
 export const ClientEvents = {
   QueueJoin: 'queue:join',
   QueueLeave: 'queue:leave',
+  /** Subscribe to a match room; ack = full MatchView (initial state / reconnect) */
+  MatchJoin: 'match:join',
+  MatchLeave: 'match:leave',
+  MatchMove: 'match:move',
+  MatchResign: 'match:resign',
+  /** Offer a draw (or accept the opponent's standing offer) */
+  MatchOfferDraw: 'match:offer-draw',
+  MatchRespondDraw: 'match:respond-draw',
 } as const;
 
 export const ServerEvents = {
@@ -14,6 +22,10 @@ export const ServerEvents = {
   QueueStatus: 'queue:status',
   /** You were paired — open the match */
   MatchFound: 'match:found',
+  /** Authoritative game state after every change (move, draw offer, end) — MatchView with yourColor=null */
+  MatchState: 'match:state',
+  /** The game is over and the result is saved */
+  MatchEnded: 'match:ended',
 } as const;
 
 export interface QueueJoinPayload {
@@ -29,6 +41,14 @@ export interface MatchFoundPayload {
   tournamentId: string;
   color: 'white' | 'black';
   opponent: { id: string; name: string };
+}
+
+export interface MatchEndedPayload {
+  matchId: string;
+  tournamentId: string;
+  result: 'white_win' | 'black_win' | 'draw';
+  reason: string;
+  pgn: string;
 }
 
 export interface WsError {

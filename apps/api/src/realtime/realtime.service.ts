@@ -27,6 +27,12 @@ export class RealtimeService {
     this.server.to(matchRoom(matchId)).emit(event, payload);
   }
 
+  /** Several rooms at once — a socket in more than one of them still gets the event once */
+  toRooms(rooms: string[], event: string, payload: unknown) {
+    if (!this.server) return this.logger.warn(`Socket server not ready; dropped ${event}`);
+    this.server.to(rooms).emit(event, payload);
+  }
+
   async userConnectionCount(userId: string): Promise<number> {
     if (!this.server) return 0;
     return (await this.server.in(userRoom(userId)).fetchSockets()).length;

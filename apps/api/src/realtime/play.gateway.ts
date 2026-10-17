@@ -11,9 +11,11 @@ import {
 import type { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 import { AUTH_COOKIE, type AuthUser } from '../auth/auth.types';
+import { DrawResponseDto, MatchRefDto, MoveDto } from '../matches/dto/match.dto';
+import { GameService } from '../matches/game.service';
 import { QueueJoinDto } from '../matchmaking/dto/queue.dto';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
-import { ClientEvents, ServerEvents, userRoom } from './events';
+import { ClientEvents, matchRoom, ServerEvents, userRoom } from './events';
 import { RealtimeService } from './realtime.service';
 import { parseCookies, parsePayload, respond, WsAppError } from './ws-utils';
 
@@ -31,6 +33,7 @@ export class PlayGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly auth: AuthService,
     private readonly realtime: RealtimeService,
     private readonly matchmaking: MatchmakingService,
+    private readonly game: GameService,
   ) {}
 
   afterInit(server: Server) {
@@ -81,5 +84,56 @@ export class PlayGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   @SubscribeMessage(ClientEvents.QueueLeave)
   queueLeave(@ConnectedSocket() socket: AuthedSocket) {
     return respond(() => this.matchmaking.leaveQueue(socket.data.user.id));
+  }
+
+  /* ── Live match ── */
+
+  /** Only the two players (and coaches, as spectators) may enter a match room */
+  @SubscribeMessage(ClientEvents.MatchJoin)
+  matchJoin(@ConnectedSocket() socket: AuthedSocket, @MessageBody() body: unknown) {
+    return respond(async () => {
+      const { matchId } = await parsePayload(MatchRefDto, body);
+      const view = await this.game.viewForJoin(socket.data.user, matchId); // throws if not allowed
+      await socket.join(matchRoom(matchId));
+      return view;
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.MatchLeave)
+  matchLeave(@ConnectedSocket() socket: AuthedSocket, @MessageBody() body: unknown) {
+    return respond(async () => {
+      const { matchId } = await parsePayload(MatchRefDto, body);
+      await socket.leave(matchRoom(matchId));
+      return { left: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.MatchMove)
+  matchMove(@ConnectedSocket() socket: AuthedSocket, @MessageBody() body: unknown) {
+    return respond(async () => this.game.move(socket.data.user, await parsePayload(MoveDto, body)));
+  }
+
+  @SubscribeMessage(ClientEvents.MatchResign)
+  matchResign(@ConnectedSocket() socket: AuthedSocket, @MessageBody() body: unknown) {
+    return respond(async () => {
+      const { matchId } = await parsePayload(MatchRefDto, body);
+      return this.game.resign(socket.data.user, matchId);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.MatchOfferDraw)
+  matchOfferDraw(@ConnectedSocket() socket: AuthedSocket, @MessageBody() body: unknown) {
+    return respond(async () => {
+      const { matchId } = await parsePayload(MatchRefDto, body);
+      return this.game.offerDraw(socket.data.user, matchId);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.MatchRespondDraw)
+  matchRespondDraw(@ConnectedSocket() socket: AuthedSocket, @MessageBody() body: unknown) {
+    return respond(async () => {
+      const { matchId, accept } = await parsePayload(DrawResponseDto, body);
+      return this.game.respondDraw(socket.data.user, matchId, accept);
+    });
   }
 }
