@@ -12,8 +12,8 @@
 | 2 · Tournaments | ✅ Done |
 | 3 · Matchmaking | ✅ Done |
 | 4 · Live match ★ | ✅ Done |
-| 5 · Leaderboard & stats | ⏳ Next |
-| 6 · Quality | 🟡 Partly (shared loading/error/empty components exist) |
+| 5 · Leaderboard & stats | ✅ Done |
+| 6 · Quality | 🟡 Mostly done — 74 unit tests; final UI states audit left |
 | 7 · README & submission | ⬜ Not started |
 
 ---
@@ -146,18 +146,21 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - [x] Coach spectator view (stretch: spectator mode)
 - [x] **Real two-browser test (headless Chrome)**: login → find opponent → auto-redirect → click + drag moves appear on the opponent's board → reload restores → mate → win/lose dialogs → PGN `1. f3 e5 2. g4 Qh4# 0-1` — 16/16, no console errors
 
-## Phase 5 — Leaderboard & stats · Req 05, 02 (stats)
-- [ ] Pure `computeStandings(participants, matches)` with tiebreaks
-- [ ] `GET /tournaments/:id/leaderboard`, `GET /tournaments/:id/matches`
-- [ ] Winner declared when tournament status = completed
-- [ ] Web: leaderboard table, per-match results, my rank, my match history
+## Phase 5 — Leaderboard & stats ✅ · Req 05, 02 (stats)
+- [x] Pure `computeStandings(players, games)` — half-point integers; points → Sonneborn-Berger → wins → head-to-head (2-way ties); full ties share the rank (13 unit tests)
+- [x] Winner = sole first place, computed in the same transaction as completion (shared first → no single winner, banner says so)
+- [x] `GET /tournaments/:id/leaderboard` (standings, winner, current leader, stats), `GET /tournaments/:id/matches`, `GET /matches` (my history)
+- [x] `tournament:updated` ping on join/leave/status/pairing/game end → clients refetch instantly (no polling)
+- [x] E2E: 4 players, 4 games with known results → table exactly as hand-computed; completion blocked while live; winner declared — 16/16
+- [x] Web: leaderboard (medals, shared ranks, SB, ½), stats cards, "currently leading", winner banner, games list with Watch (coach, live) / Review, student's own games, My matches with W/D/L record
+- [x] Browser test: coach page updates live when a game ends, winner banner appears on completion — 10/10, no console errors
 
 ## Phase 6 — Quality · Req 06, 07, 08
-- [ ] Unit tests: scoring/standings, join rules, move/turn validation, matchmaking pairing
+- [x] Unit tests: scoring/standings (13), join/leave/queue/status rules (37), move/turn validation + game end + clock (18), pairing (6) — **74 total**
 - [x] Shared loading / error / empty state components
-- [ ] …used on every page
-- [ ] TanStack Query invalidation after every mutation + on socket `match:ended`
-- [ ] DD/MM/YYYY dates, IST-aware display
+- [ ] Audit: loading / error / empty on every page
+- [x] TanStack Query invalidation after every mutation + on socket `match:ended` / `tournament:updated`
+- [x] DD/MM/YYYY dates, viewer-timezone display (stored UTC)
 
 ## Phase 7 — README & submission · Req 09
 - [ ] Setup (env, Postgres, migrations, seed, start both apps), seed credentials
@@ -172,7 +175,7 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 ## Stretch (only after the core works)
 - [x] *(designed in)* Server-authoritative state
 - [x] *(designed in)* Reconnection — board + clock restored from DB on refresh
-- [x] Spectator mode for coach (read-only board via `match:join`) — needs an entry point from the coach's tournament page (Phase 5)
+- [x] Spectator mode for coach — "Watch" on live games in the coach's tournament page → read-only live board
 - [x] Draw offers, threefold repetition, 50-move rule, increment time controls (`5+3`)
 - [ ] Standings-based matchmaking
 - [ ] Round-robin completion (everyone plays everyone once, auto-complete)
@@ -202,6 +205,7 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 | `match:respond-draw` | C → S | `{ matchId, accept }` |
 | `match:state` | S → C | `MatchView`: `{ id, fen, pgn, ply, turn, lastMove, drawOffer, clock: { whiteMs, blackMs, running, serverNow }, status, result, endReason, … }` |
 | `match:ended` | S → C | `{ matchId, tournamentId, result, reason, pgn }` |
+| `tournament:updated` | S → all | `{ tournamentId }` — invalidation ping, clients refetch |
 
 All C → S events are acknowledged with `{ success: true, data }` or `{ success: false, error: { code, message, details? } }`.
 
