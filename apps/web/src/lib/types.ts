@@ -67,6 +67,8 @@ export interface MatchView {
   pgn: string;
   ply: number;
   turn: Color;
+  lastMove: { from: string; to: string; san: string } | null;
+  drawOffer: Color | null;
   timeControl: { baseSeconds: number; incrementSeconds: number; label: string };
   clock: { whiteMs: number; blackMs: number; running: Color | null; serverNow: string };
   startedAt: string;

@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
-import { ClientEvents, ServerEvents, type Ack, type MatchFound, type QueueStatus } from "@/lib/socket-events";
+import {
+  ClientEvents,
+  ServerEvents,
+  type Ack,
+  type MatchFound,
+  type QueueStatus,
+} from "@/lib/socket-events";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -60,6 +66,12 @@ export function SocketProvider({ userId, children }: { userId: string; children:
       toast.success(`Opponent found: ${m.opponent.name}. You play ${m.color}!`);
       void qc.invalidateQueries({ queryKey: ["matches"] });
       router.push(`/match/${m.matchId}`);
+    });
+
+    // A game of mine finished: standings, histories and "current match" are now stale
+    s.on(ServerEvents.MatchEnded, () => {
+      void qc.invalidateQueries({ queryKey: ["matches"] });
+      void qc.invalidateQueries({ queryKey: ["tournaments"] });
     });
 
     return () => {

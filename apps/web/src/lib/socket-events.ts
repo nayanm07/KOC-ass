@@ -3,12 +3,28 @@
 export const ClientEvents = {
   QueueJoin: "queue:join",
   QueueLeave: "queue:leave",
+  MatchJoin: "match:join",
+  MatchLeave: "match:leave",
+  MatchMove: "match:move",
+  MatchResign: "match:resign",
+  MatchOfferDraw: "match:offer-draw",
+  MatchRespondDraw: "match:respond-draw",
 } as const;
 
 export const ServerEvents = {
   QueueStatus: "queue:status",
   MatchFound: "match:found",
+  MatchState: "match:state",
+  MatchEnded: "match:ended",
 } as const;
+
+export interface MatchEnded {
+  matchId: string;
+  tournamentId: string;
+  result: "white_win" | "black_win" | "draw";
+  reason: string;
+  pgn: string;
+}
 
 export type QueueStatus =
   | { waiting: true; tournamentId: string; since: string }
