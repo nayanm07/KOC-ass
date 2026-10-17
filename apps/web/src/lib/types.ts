@@ -42,3 +42,34 @@ export interface TournamentInput {
   startsAt: string;
   status?: "draft" | "open";
 }
+
+export type Color = "white" | "black";
+export type MatchResult = "white_win" | "black_win" | "draw";
+export type MatchEndReason =
+  | "checkmate"
+  | "resignation"
+  | "timeout"
+  | "stalemate"
+  | "insufficient_material"
+  | "threefold_repetition"
+  | "fifty_move_rule"
+  | "draw_agreement";
+
+export interface MatchView {
+  id: string;
+  tournament: { id: string; name: string };
+  white: { id: string; name: string };
+  black: { id: string; name: string };
+  status: "ongoing" | "completed";
+  result: MatchResult | null;
+  endReason: MatchEndReason | null;
+  fen: string;
+  pgn: string;
+  ply: number;
+  turn: Color;
+  timeControl: { baseSeconds: number; incrementSeconds: number; label: string };
+  clock: { whiteMs: number; blackMs: number; running: Color | null; serverNow: string };
+  startedAt: string;
+  endedAt: string | null;
+  yourColor: Color | null;
+}

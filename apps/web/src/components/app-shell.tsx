@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Logo } from "@/components/logo";
+import { SocketProvider, useSocket } from "@/components/socket-provider";
 import { ErrorState, LoadingState } from "@/components/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,22 +21,38 @@ const NAV: Record<Role, { href: string; label: string }[]> = {
   ],
 };
 
+function ConnectionDot() {
+  const { connection } = useSocket();
+  const label = connection === "connected" ? "Live" : connection === "connecting" ? "Connecting…" : "Offline";
+  return (
+    <span className="hidden items-center gap-1.5 text-xs text-muted-foreground md:inline-flex" title={`Real-time connection: ${label}`}>
+      <span
+        className={cn(
+          "size-2 rounded-full",
+          connection === "connected" ? "bg-emerald-500" : connection === "connecting" ? "animate-pulse bg-amber-400" : "bg-red-500",
+        )}
+      />
+      {label}
+    </span>
+  );
+}
+
 /**
- * Layout for role-specific areas. Frontend half of role enforcement:
- * middleware redirects early, and this re-checks against the verified /me response.
+ * Layout for signed-in areas. Frontend half of role enforcement: middleware redirects early,
+ * and this re-checks against the verified /me response. `role` omitted = any signed-in user.
  */
-export function AppShell({ role, children }: { role: Role; children: React.ReactNode }) {
+export function AppShell({ role, children }: { role?: Role; children: React.ReactNode }) {
   const me = useMe();
   const logout = useLogout();
   const router = useRouter();
   const pathname = usePathname();
 
   const user = me.data;
-  const wrongRole = user && user.role !== role;
+  const wrongRole = !!user && !!role && user.role !== role;
 
   useEffect(() => {
     if (me.isSuccess && !user) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-    else if (wrongRole) router.replace(homeFor(user.role));
+    else if (wrongRole && user) router.replace(homeFor(user.role));
   }, [me.isSuccess, user, wrongRole, router, pathname]);
 
   if (me.isPending) return <LoadingState label="Checking your session…" />;
@@ -47,16 +64,18 @@ export function AppShell({ role, children }: { role: Role; children: React.React
     );
   if (!user || wrongRole) return <LoadingState label="Redirecting…" />;
 
+  const navRole = user.role;
   return (
+    <SocketProvider userId={user.id}>
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4">
-          <Link href={homeFor(role)}>
+          <Link href={homeFor(navRole)}>
             <Logo />
           </Link>
           <nav className="flex gap-1">
-            {NAV[role].map((item) => {
-              const active = item.href === homeFor(role) ? pathname === item.href : pathname.startsWith(item.href);
+            {NAV[navRole].map((item) => {
+              const active = item.href === homeFor(navRole) ? pathname === item.href : pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}
@@ -72,9 +91,10 @@ export function AppShell({ role, children }: { role: Role; children: React.React
             })}
           </nav>
           <div className="ml-auto flex items-center gap-3">
+            <ConnectionDot />
             <span className="hidden text-sm sm:inline">{user.name}</span>
-            <Badge variant={role === "coach" ? "default" : "secondary"} className="capitalize">
-              {role === "coach" ? "♚ Coach" : "♟ Student"}
+            <Badge variant={navRole === "coach" ? "default" : "secondary"} className="capitalize">
+              {navRole === "coach" ? "♚ Coach" : "♟ Student"}
             </Badge>
             <Button
               variant="ghost"
@@ -91,5 +111,6 @@ export function AppShell({ role, children }: { role: Role; children: React.React
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
     </div>
+    </SocketProvider>
   );
 }
