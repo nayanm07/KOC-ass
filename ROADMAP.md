@@ -9,8 +9,8 @@
 |---|---|
 | 0 · Setup | ✅ Done |
 | 1 · Data model & auth | ✅ Done |
-| 2 · Tournaments | ⏳ Next |
-| 3 · Matchmaking | ⬜ Not started (DB tables ready) |
+| 2 · Tournaments | ✅ Done |
+| 3 · Matchmaking | ⏳ Next (DB tables ready) |
 | 4 · Live match ★ | ⬜ Not started (DB tables ready) |
 | 5 · Leaderboard & stats | ⬜ Not started |
 | 6 · Quality | 🟡 Partly (shared loading/error/empty components exist) |
@@ -44,7 +44,7 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 | Move races | `UNIQUE(match_id, ply)` on `match_moves` + `ply` as optimistic version → two racing writes for the same move can't both land. |
 | Scoring | Win 1 · Draw ½ · Loss 0, computed from completed matches (single source of truth, no stored points to drift). |
 | Tiebreak | Points → Sonneborn-Berger → number of wins → head-to-head → name. |
-| Join rule | Students self-join tournaments with status `open`. Queueing allowed when `open`/`ongoing` and participant. |
+| Join rule | Students self-join while status is `open` (registration). Leave only while `open`. "Find opponent" only when `ongoing` and a participant. Any coach can manage any tournament (single academy). |
 
 ---
 
@@ -87,13 +87,26 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - [x] Shared `LoadingState` / `ListSkeleton` / `ErrorState` (with retry) / `EmptyState`
 - [x] Tested: all redirects for logged-out, student, coach through the Next proxy
 
-## Phase 2 — Tournaments ⏳ · Req 02, 03 (join)
-- [ ] Coach: CRUD tournament (name, time control `5+0`, startsAt, status draft/open/ongoing/completed)
-- [ ] Status transition rules (draft → open → ongoing → completed)
-- [ ] Student: list open/ongoing tournaments, join open one (join rules)
-- [ ] Verify students get 403 on coach-only endpoints
-- [ ] Coach UI: list, create/edit dialog, status change, delete
-- [ ] Student UI: browse + join, "my tournaments / schedule"
+## Phase 2 — Tournaments ✅ · Req 02, 03 (join)
+**API** (`/api/v1/tournaments`)
+- [x] `GET /` (filters `?status=open,ongoing&joined=true`), `GET /:id` (with participants)
+- [x] Coach: `POST /`, `PATCH /:id`, `PATCH /:id/status`, `DELETE /:id`
+- [x] Student: `POST /:id/join`, `DELETE /:id/join` (leave)
+- [x] Pure rules in `tournament.rules.ts` — 37 unit tests (join, leave, queue, transitions, edit, delete)
+- [x] Lifecycle: draft ⇄ open → ongoing → completed. open→draft only with 0 players; start needs ≥ 2 players; complete blocked while games are live
+- [x] Time control + start time locked once ongoing; delete only draft/open (keeps match history)
+- [x] Students never see drafts (404); students get 403 on coach routes (verified)
+- [x] Concurrency: row locks (`FOR UPDATE` / `FOR SHARE`) serialise joins vs status changes; 10 parallel joins → exactly 1 succeeds (verified)
+- [x] Tested end-to-end with curl: every rule, validation errors, bad UUID, bad filter
+
+**Web**
+- [x] Coach: list with status filter tabs + counts, create/edit dialog (time-control presets, timezone-labelled start), status buttons driven by `allowedTransitions`, confirm dialogs, delete
+- [x] Coach: tournament detail with players table (standings placeholder until Phase 5)
+- [x] Student: Browse (Live / Open / Finished) + My schedule (upcoming & past), Join / Leave with confirm
+- [x] Student: tournament detail with "play panel" (Find opponent button wired in Phase 3)
+- [x] TanStack Query keys + invalidation after every mutation, toasts on success/error
+- [x] DD/MM/YYYY dates in viewer's timezone (stored UTC)
+- [x] Production build passes
 
 ## Phase 3 — Matchmaking · Req 03 ⚠️ concurrency test
 - [x] *(schema)* `matchmaking_queue` + `active_players` tables for DB-enforced no-double-booking
@@ -172,6 +185,7 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - **Port 5432 already used** by locally installed Postgres 16/18 → Docker Postgres exposed on host port 5440 (`DB_HOST_PORT`).
 - **`drizzle-kit` couldn't find `drizzle-orm`** (nested in `apps/api/node_modules` after incremental installs) → clean reinstall hoisted it to the root.
 - **`npm install` hung** because `npm run dev:api` was locking files in `node_modules` → always stop dev servers before installing on Windows.
+- **Next dev 500 on `[id]` pages** ("Jest worker encountered 2 child process exceptions") after adding dynamic routes while the dev server ran → corrupted `.next` cache; deleting `apps/web/.next` fixed it (code verified with a clean server + production build).
 
 ## Commits so far
 `docs: roadmap` → `chore(api): scaffold` → `chore(web): scaffold` → `chore: docker compose` → `chore: LF + web env` → `chore: postgres port 5440` → `feat(api): schema + migration + seed` → `feat(api): envelope + filter + env validation` → `feat(api): auth + guards` → `chore: lockfile` → `feat(web): api client + query + auth hooks` → `feat(web): login + middleware + shell`
