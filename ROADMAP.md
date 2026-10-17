@@ -39,7 +39,7 @@ docker-compose.yml  → postgres + api + web
 - [x] Install deps (drizzle, pg, socket.io, chess.js, react-chessboard, TanStack Query, …)
 - [x] `docker-compose.yml` (postgres + api + web) + Dockerfiles — not yet run locally (no Docker installed)
 - [x] `.env.example` for root / api / web
-- [ ] Postgres reachable (Docker **or** Neon/Supabase URL)
+- [x] Postgres reachable — Docker (WSL) on host port 5440
 
 ## Phase 1 — Data model & auth (≈5h) · Req 01
 - [ ] Drizzle schema: `users`, `tournaments`, `tournament_participants`, `matches`

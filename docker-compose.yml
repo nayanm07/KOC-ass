@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chess}
       POSTGRES_DB: ${POSTGRES_DB:-kingdom_chess}
     ports:
-      - "5432:5432"
+      # Host port 5440 to avoid clashing with a locally installed Postgres on 5432
+      - "${DB_HOST_PORT:-5440}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
