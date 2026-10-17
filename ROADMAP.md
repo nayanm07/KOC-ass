@@ -11,8 +11,8 @@
 | 1 · Data model & auth | ✅ Done |
 | 2 · Tournaments | ✅ Done |
 | 3 · Matchmaking | ✅ Done |
-| 4 · Live match ★ | ⏳ Next (DB tables, clock maths, `GET /matches/:id` ready) |
-| 5 · Leaderboard & stats | ⬜ Not started |
+| 4 · Live match ★ | ✅ Done |
+| 5 · Leaderboard & stats | ⏳ Next |
 | 6 · Quality | 🟡 Partly (shared loading/error/empty components exist) |
 | 7 · README & submission | ⬜ Not started |
 
@@ -121,17 +121,30 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - [x] Pure + unit-tested: `pickPair`, `assignColors`, clock maths
 - [x] **Concurrency verified**: 6 students queue simultaneously → exactly 3 matches, each player exactly one `match:found` — 21/21 checks × 6 runs
 - [x] Web: socket provider, live/offline dot, Find opponent → searching (timer) → cancel, Return to your game
-- [ ] Re-queue after game ends (button on the end-of-game dialog — Phase 4)
+- [x] Re-queue after game ends ("Find next opponent" on the end-of-game dialog)
 
-## Phase 4 — Live match ★ HEADLINE · Req 04
-- [x] *(schema)* `matches` holds fen / pgn / ply / clocks; `match_moves` log
-- [ ] `match:join` (room auth: only the 2 participants)
-- [ ] `match:move` → server validates turn + legality (chess.js) → broadcast `match:state`
-- [ ] Shared server clock, flag-fall on timeout
-- [ ] Resign, checkmate, stalemate / insufficient material / threefold / 50-move draws
-- [ ] PGN shown live, persisted on end
-- [ ] Result saved → leaderboard updated → `match:ended` broadcast
-- [ ] Web: board (react-chessboard), orientation by colour, clocks, PGN panel, resign button, end-of-game dialog with "Find next opponent"
+## Phase 4 — Live match ★ HEADLINE ✅ · Req 04
+**Server (authoritative)**
+- [x] `match:join` — only the 2 players, plus coaches as read-only spectators; ack = full state (initial load + reconnect)
+- [x] `match:move` → row lock → participant, turn and `ply` (stale-board) checks → server clock → chess.js legality → move log + state in one transaction → broadcast `match:state`
+- [x] Shared server clock: stored remaining + `turn_started_at`; increment added; a move arriving after the flag = loss on time
+- [x] Server flag timer per game (fires even if nobody moves), re-armed from the DB on restart
+- [x] Game end: checkmate, resignation, timeout (draw if the opponent can't mate), stalemate, insufficient material, threefold repetition, 50-move rule, draw by agreement
+- [x] Draw offers: offer / accept / decline; any move cancels a pending offer
+- [x] PGN with headers (Event, Players, Date, TimeControl) live on every move; result token written on end
+- [x] Result saved + `active_players` freed in the same transaction → `match:ended` to room + both players
+- [x] 18 unit tests (move/turn validation, every game end, clock maths)
+- [x] E2E socket test — 30/30: sync in ~34 ms, duplicate move applied once, checkmate, resign, draws, reconnect restore, server flag after 1.5 s
+
+**Web**
+- [x] Board (react-chessboard): drag-and-drop **and** click-to-move, legal-move dots, last-move + check highlights, promotion picker, orientation by colour, flip
+- [x] Optimistic own move → confirmed or rolled back by the ack; resync on rejection
+- [x] Clocks tick locally between server snapshots, red under 20 s, tenths under 10 s
+- [x] PGN panel: move list, click a move to review (stretch: move-list navigation), step buttons, copy PGN
+- [x] Draw offer banner, resign confirm, connection-lost banner, auto re-join on reconnect
+- [x] Game-over dialog: result + reason, "Find next opponent" (re-queue), back to tournament, review game
+- [x] Coach spectator view (stretch: spectator mode)
+- [x] **Real two-browser test (headless Chrome)**: login → find opponent → auto-redirect → click + drag moves appear on the opponent's board → reload restores → mate → win/lose dialogs → PGN `1. f3 e5 2. g4 Qh4# 0-1` — 16/16, no console errors
 
 ## Phase 5 — Leaderboard & stats · Req 05, 02 (stats)
 - [ ] Pure `computeStandings(participants, matches)` with tiebreaks
@@ -159,11 +172,12 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 ## Stretch (only after the core works)
 - [x] *(designed in)* Server-authoritative state
 - [x] *(designed in)* Reconnection — board + clock restored from DB on refresh
-- [ ] Spectator mode for coach
-- [ ] Draw offers + increment time controls (`5+3`) — increment already stored per match
+- [x] Spectator mode for coach (read-only board via `match:join`) — needs an entry point from the coach's tournament page (Phase 5)
+- [x] Draw offers, threefold repetition, 50-move rule, increment time controls (`5+3`)
 - [ ] Standings-based matchmaking
 - [ ] Round-robin completion (everyone plays everyone once, auto-complete)
-- [ ] Move-list navigation (click a move to review) — `match_moves.fen_after` already stored
+- [x] Move-list navigation (click a move to review)
+- [x] DD/MM/YYYY dates + viewer-timezone display
 
 ## Seed credentials
 
@@ -180,12 +194,16 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 | `queue:leave` | C → S | `{ tournamentId }` |
 | `queue:status` | S → C | `{ waiting: true, tournamentId, since }` \| `{ waiting: false, tournamentId, reason? }` |
 | `match:found` | S → C | `{ matchId, tournamentId, color, opponent: { id, name } }` |
-| `match:join` | C → S | `{ matchId }` |
-| `match:state` | S → C | `{ matchId, fen, pgn, turn, whiteMs, blackMs, serverNow, status, lastMove }` |
-| `match:move` | C → S | `{ matchId, from, to, promotion? }` |
+| `match:join` | C → S | `{ matchId }` → ack: full `MatchView` |
+| `match:leave` | C → S | `{ matchId }` |
+| `match:move` | C → S | `{ matchId, from, to, promotion?, ply? }` → ack `{ ply }` |
 | `match:resign` | C → S | `{ matchId }` |
-| `match:ended` | S → C | `{ matchId, result, reason, pgn }` |
-| `error` | S → C | `{ code, message }` |
+| `match:offer-draw` | C → S | `{ matchId }` (accepts if the opponent already offered) |
+| `match:respond-draw` | C → S | `{ matchId, accept }` |
+| `match:state` | S → C | `MatchView`: `{ id, fen, pgn, ply, turn, lastMove, drawOffer, clock: { whiteMs, blackMs, running, serverNow }, status, result, endReason, … }` |
+| `match:ended` | S → C | `{ matchId, tournamentId, result, reason, pgn }` |
+
+All C → S events are acknowledged with `{ success: true, data }` or `{ success: false, error: { code, message, details? } }`.
 
 ## Issues hit & how they were solved (useful for README)
 - **Nest 12 released** → `@nestjs/websockets@latest` required Nest 12; pinned all Nest packages to `^11` to match the brief.
@@ -193,6 +211,7 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - **`drizzle-kit` couldn't find `drizzle-orm`** (nested in `apps/api/node_modules` after incremental installs) → clean reinstall hoisted it to the root.
 - **`npm install` hung** because `npm run dev:api` was locking files in `node_modules` → always stop dev servers before installing on Windows.
 - **Next dev 500 on `[id]` pages** ("Jest worker encountered 2 child process exceptions") after adding dynamic routes while the dev server ran → corrupted `.next` cache; deleting `apps/web/.next` fixed it (code verified with a clean server + production build).
+- **UI rendered in a serif font**: shadcn's generated theme had `--font-sans: var(--font-sans)` (self-reference), and the base layer applies the font on `<html>` while the font variables were on `<body>` → pointed the theme at `--font-geist-sans` and moved the variables to `<html>`. The dev server only picks up root-layout changes after a restart.
 
 ## Commits so far
 `docs: roadmap` → `chore(api): scaffold` → `chore(web): scaffold` → `chore: docker compose` → `chore: LF + web env` → `chore: postgres port 5440` → `feat(api): schema + migration + seed` → `feat(api): envelope + filter + env validation` → `feat(api): auth + guards` → `chore: lockfile` → `feat(web): api client + query + auth hooks` → `feat(web): login + middleware + shell`
