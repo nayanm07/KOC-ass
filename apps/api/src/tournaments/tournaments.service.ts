@@ -119,7 +119,7 @@ export class TournamentsService {
   /** Per-match results */
   async matches(viewer: AuthUser, id: string): Promise<TournamentMatchRow[]> {
     await this.findOne(viewer, id);
-    return this.leaderboards.tournamentMatches(id);
+    return this.leaderboards.tournamentMatches(id, viewer.role === 'coach');
   }
 
   /* ──────────────────────── Coach ──────────────────────── */

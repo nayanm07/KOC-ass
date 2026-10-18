@@ -33,9 +33,12 @@ export interface TournamentMatchRow {
   status: Match['status'];
   result: Match['result'];
   endReason: Match['endReason'];
+  /** Half-moves played (ply) */
   moves: number;
   startedAt: Date;
   endedAt: Date | null;
+  /** Full PGN — only included for coaches (students may only open their own games) */
+  pgn?: string;
 }
 
 @Injectable()
@@ -97,7 +100,7 @@ export class LeaderboardService {
   }
 
   /** Per-match results (live games first, then most recent) */
-  async tournamentMatches(tournamentId: string): Promise<TournamentMatchRow[]> {
+  async tournamentMatches(tournamentId: string, includePgn = false): Promise<TournamentMatchRow[]> {
     const white = alias(users, 'white');
     const black = alias(users, 'black');
     const rows = await this.db
@@ -113,6 +116,7 @@ export class LeaderboardService {
         moves: matches.ply,
         startedAt: matches.startedAt,
         endedAt: matches.endedAt,
+        pgn: matches.pgn,
       })
       .from(matches)
       .innerJoin(white, eq(white.id, matches.whiteId))
@@ -130,6 +134,7 @@ export class LeaderboardService {
       moves: r.moves,
       startedAt: r.startedAt,
       endedAt: r.endedAt,
+      ...(includePgn && { pgn: r.pgn }),
     }));
   }
 }
