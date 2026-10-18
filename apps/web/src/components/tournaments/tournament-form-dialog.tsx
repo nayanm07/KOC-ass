@@ -14,10 +14,31 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateTournament, useUpdateTournament } from "@/hooks/use-tournaments";
+import {
+  useCreateTournament,
+  useUpdateTournament,
+} from "@/hooks/use-tournaments";
 import { errorMessage } from "@/lib/api";
-import { fromDateTimeLocal, localTimezoneLabel, toDateTimeLocal } from "@/lib/format";
-import type { Tournament } from "@/lib/types";
+import {
+  fromDateTimeLocal,
+  localTimezoneLabel,
+  toDateTimeLocal,
+} from "@/lib/format";
+import type { Tournament, TournamentFormat } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+const FORMATS: { value: TournamentFormat; title: string; body: string }[] = [
+  {
+    value: "arena",
+    title: "Arena",
+    body: "Play as many games as you like. Paired with the closest-ranked waiting player. Coach ends it.",
+  },
+  {
+    value: "round_robin",
+    title: "Round robin",
+    body: "Everyone plays everyone exactly once. Ends automatically after the last game.",
+  },
+];
 
 const PRESETS = [
   [1, 0],
@@ -54,10 +75,19 @@ export function TournamentFormDialog({
 
   const [name, setName] = useState(tournament?.name ?? "");
   const [description, setDescription] = useState(tournament?.description ?? "");
-  const [baseMinutes, setBaseMinutes] = useState(tournament ? tournament.timeControl.baseSeconds / 60 : 5);
-  const [incrementSeconds, setIncrementSeconds] = useState(tournament?.timeControl.incrementSeconds ?? 0);
-  const [startsAt, setStartsAt] = useState(toDateTimeLocal(tournament?.startsAt ?? defaultStart()));
+  const [baseMinutes, setBaseMinutes] = useState(
+    tournament ? tournament.timeControl.baseSeconds / 60 : 5,
+  );
+  const [incrementSeconds, setIncrementSeconds] = useState(
+    tournament?.timeControl.incrementSeconds ?? 0,
+  );
+  const [startsAt, setStartsAt] = useState(
+    toDateTimeLocal(tournament?.startsAt ?? defaultStart()),
+  );
   const [publish, setPublish] = useState(false);
+  const [format, setFormat] = useState<TournamentFormat>(
+    tournament?.format ?? "arena",
+  );
 
   const close = () => {
     mutation.reset();
@@ -67,6 +97,7 @@ export function TournamentFormDialog({
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const schedule = {
+      format,
       baseMinutes: Number(baseMinutes),
       incrementSeconds: Number(incrementSeconds),
       startsAt: fromDateTimeLocal(startsAt),
@@ -75,7 +106,10 @@ export function TournamentFormDialog({
 
     if (editing) {
       update.mutate(
-        { id: tournament.id, input: locked ? details : { ...details, ...schedule } },
+        {
+          id: tournament.id,
+          input: locked ? details : { ...details, ...schedule },
+        },
         { onSuccess: close },
       );
     } else {
@@ -87,19 +121,30 @@ export function TournamentFormDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : !mutation.isPending && close())}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) =>
+        o ? onOpenChange(true) : !mutation.isPending && close()
+      }
+    >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit tournament" : "New tournament"}</DialogTitle>
+          <DialogTitle>
+            {editing ? "Edit tournament" : "New tournament"}
+          </DialogTitle>
           <DialogDescription>
-            {editing ? "Update the tournament details." : "Players are paired automatically once it starts."}
+            {editing
+              ? "Update the tournament details."
+              : "Players are paired automatically once it starts."}
           </DialogDescription>
         </DialogHeader>
 
         <form id="tournament-form" onSubmit={submit} className="space-y-4">
           {mutation.isError && (
             <Alert variant="destructive">
-              <AlertDescription>{errorMessage(mutation.error)}</AlertDescription>
+              <AlertDescription>
+                {errorMessage(mutation.error)}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -128,13 +173,47 @@ export function TournamentFormDialog({
           </div>
 
           <fieldset className="space-y-2 disabled:opacity-60" disabled={locked}>
+            <Label>Format</Label>
+            <div
+              className="grid gap-2 sm:grid-cols-2"
+              role="radiogroup"
+              aria-label="Tournament format"
+            >
+              {FORMATS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={format === f.value}
+                  onClick={() => setFormat(f.value)}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-colors hover:bg-accent/50",
+                    format === f.value &&
+                      "border-primary bg-primary/5 ring-2 ring-primary/30",
+                  )}
+                >
+                  <span className="block text-sm font-medium">{f.title}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {f.body}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="space-y-2 disabled:opacity-60" disabled={locked}>
             <Label>
               Time control{" "}
-              {locked && <span className="text-xs text-muted-foreground">(locked after start)</span>}
+              {locked && (
+                <span className="text-xs text-muted-foreground">
+                  (locked after start)
+                </span>
+              )}
             </Label>
             <div className="flex flex-wrap gap-1.5">
               {PRESETS.map(([m, i]) => {
-                const active = Number(baseMinutes) === m && Number(incrementSeconds) === i;
+                const active =
+                  Number(baseMinutes) === m && Number(incrementSeconds) === i;
                 return (
                   <Button
                     key={`${m}+${i}`}
@@ -154,7 +233,10 @@ export function TournamentFormDialog({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="t-min" className="text-xs text-muted-foreground">
+                <Label
+                  htmlFor="t-min"
+                  className="text-xs text-muted-foreground"
+                >
                   Minutes per player
                 </Label>
                 <Input
@@ -168,7 +250,10 @@ export function TournamentFormDialog({
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="t-inc" className="text-xs text-muted-foreground">
+                <Label
+                  htmlFor="t-inc"
+                  className="text-xs text-muted-foreground"
+                >
                   Increment (sec per move)
                 </Label>
                 <Input
@@ -186,7 +271,10 @@ export function TournamentFormDialog({
 
           <div className="space-y-2">
             <Label htmlFor="t-start">
-              Starts at <span className="text-xs text-muted-foreground">({localTimezoneLabel()})</span>
+              Starts at{" "}
+              <span className="text-xs text-muted-foreground">
+                ({localTimezoneLabel()})
+              </span>
             </Label>
             <Input
               id="t-start"
@@ -200,18 +288,35 @@ export function TournamentFormDialog({
 
           {!editing && (
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={publish}
+                onChange={(e) => setPublish(e.target.checked)}
+              />
               Open registration immediately (otherwise saved as a draft)
             </label>
           )}
         </form>
 
         <DialogFooter>
-          <Button variant="outline" type="button" disabled={mutation.isPending} onClick={close}>
+          <Button
+            variant="outline"
+            type="button"
+            disabled={mutation.isPending}
+            onClick={close}
+          >
             Cancel
           </Button>
-          <Button type="submit" form="tournament-form" disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : editing ? "Save changes" : "Create tournament"}
+          <Button
+            type="submit"
+            form="tournament-form"
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending
+              ? "Saving…"
+              : editing
+                ? "Save changes"
+                : "Create tournament"}
           </Button>
         </DialogFooter>
       </DialogContent>

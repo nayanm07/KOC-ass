@@ -11,12 +11,14 @@ export interface User {
 }
 
 export type TournamentStatus = "draft" | "open" | "ongoing" | "completed";
+export type TournamentFormat = "arena" | "round_robin";
 
 export interface Tournament {
   id: string;
   name: string;
   description: string | null;
   status: TournamentStatus;
+  format: TournamentFormat;
   timeControl: { baseSeconds: number; incrementSeconds: number; label: string };
   startsAt: string;
   startedAt: string | null;
@@ -40,6 +42,7 @@ export interface TournamentInput {
   baseMinutes: number;
   incrementSeconds: number;
   startsAt: string;
+  format?: TournamentFormat;
   status?: "draft" | "open";
 }
 
@@ -93,6 +96,7 @@ export interface Leaderboard {
   winner: { userId: string; name: string } | null;
   leader: { userId: string; name: string } | null;
   stats: { players: number; gamesPlayed: number; liveGames: number; whiteWins: number; blackWins: number; draws: number };
+  roundRobin: { totalGames: number; completedGames: number } | null;
 }
 
 export interface TournamentMatchRow {

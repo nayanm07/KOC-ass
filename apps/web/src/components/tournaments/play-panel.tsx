@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 import { useMatchmaking } from "@/components/socket-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useMe } from "@/hooks/use-auth";
 import { useCurrentMatch } from "@/hooks/use-matches";
+import { useLeaderboard } from "@/hooks/use-tournaments";
 import type { TournamentDetail } from "@/lib/types";
 import { JoinButton } from "./student-actions";
 
@@ -22,16 +24,41 @@ function useElapsed(since: string | null) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function Matchmaking({ tournamentId }: { tournamentId: string }) {
+function Matchmaking({
+  tournamentId,
+  roundRobin,
+}: {
+  tournamentId: string;
+  roundRobin: boolean;
+}) {
   const mm = useMatchmaking(tournamentId);
   const current = useCurrentMatch();
   const elapsed = useElapsed(mm.waiting ? mm.since : null);
+  const me = useMe();
+  const lb = useLeaderboard(tournamentId);
+  const myRow = lb.data?.standings.find((r) => r.userId === me.data?.id);
+  const playedEveryone =
+    roundRobin &&
+    !!myRow &&
+    !!lb.data &&
+    myRow.played >= lb.data.standings.length - 1;
 
   if (current.data?.matchId) {
     return (
-      <Link href={`/match/${current.data.matchId}`} className={buttonVariants()}>
+      <Link
+        href={`/match/${current.data.matchId}`}
+        className={buttonVariants()}
+      >
         Return to your game
       </Link>
+    );
+  }
+
+  if (playedEveryone) {
+    return (
+      <span className="text-sm font-medium">
+        ✓ You’ve played everyone — waiting for the last games to finish.
+      </span>
     );
   }
 
@@ -39,9 +66,18 @@ function Matchmaking({ tournamentId }: { tournamentId: string }) {
     return (
       <div className="flex items-center gap-3">
         <span className="inline-flex items-center gap-2 text-sm font-medium">
-          <Loader2 className="size-4 animate-spin" /> Searching for an opponent… {elapsed}
+          <Loader2 className="size-4 animate-spin" />{" "}
+          {roundRobin
+            ? "Waiting for an opponent you haven’t played…"
+            : "Searching for an opponent…"}{" "}
+          {elapsed}
         </span>
-        <Button variant="outline" size="sm" disabled={mm.pending} onClick={mm.cancel}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={mm.pending}
+          onClick={mm.cancel}
+        >
           Cancel
         </Button>
       </div>
@@ -49,8 +85,15 @@ function Matchmaking({ tournamentId }: { tournamentId: string }) {
   }
 
   return (
-    <Button disabled={mm.pending || !mm.connected || current.isPending} onClick={mm.findOpponent}>
-      {mm.pending ? "Joining queue…" : !mm.connected ? "Connecting…" : "Find opponent"}
+    <Button
+      disabled={mm.pending || !mm.connected || current.isPending}
+      onClick={mm.findOpponent}
+    >
+      {mm.pending
+        ? "Joining queue…"
+        : !mm.connected
+          ? "Connecting…"
+          : "Find opponent"}
     </Button>
   );
 }
@@ -58,11 +101,18 @@ function Matchmaking({ tournamentId }: { tournamentId: string }) {
 export function PlayPanel({ tournament: t }: { tournament: TournamentDetail }) {
   let message: string;
   if (!t.isJoined) {
-    message = t.status === "open" ? "Join to take part." : "Registration for this tournament is closed.";
+    message =
+      t.status === "open"
+        ? "Join to take part."
+        : "Registration for this tournament is closed.";
   } else if (t.status === "open") {
-    message = "You're registered. Games start once the coach starts the tournament.";
+    message =
+      "You're registered. Games start once the coach starts the tournament.";
   } else if (t.status === "ongoing") {
-    message = "The tournament is live — you'll be paired with the next available player.";
+    message =
+      t.format === "round_robin"
+        ? "Round robin — you play everyone once. Find an opponent you haven't met yet."
+        : "The tournament is live — you'll be paired with the closest-ranked available player.";
   } else {
     message = "This tournament has finished.";
   }
@@ -74,8 +124,15 @@ export function PlayPanel({ tournament: t }: { tournament: TournamentDetail }) {
           <Swords className="size-5 shrink-0 text-primary" />
           <p className="text-sm">{message}</p>
         </div>
-        {t.isJoined && t.status === "ongoing" && <Matchmaking tournamentId={t.id} />}
-        {!t.isJoined && t.status === "open" && <JoinButton tournament={t} size="default" />}
+        {t.isJoined && t.status === "ongoing" && (
+          <Matchmaking
+            tournamentId={t.id}
+            roundRobin={t.format === "round_robin"}
+          />
+        )}
+        {!t.isJoined && t.status === "open" && (
+          <JoinButton tournament={t} size="default" />
+        )}
       </CardContent>
     </Card>
   );

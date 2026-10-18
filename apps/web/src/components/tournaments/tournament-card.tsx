@@ -1,4 +1,4 @@
-import { CalendarClock, Clock, Trophy, Users } from "lucide-react";
+import { CalendarClock, Clock, Repeat, Swords, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +9,10 @@ import { TournamentStatusBadge } from "./status-badge";
 export function TournamentMeta({ tournament: t }: { tournament: Tournament }) {
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5" title="Tournament format">
+        {t.format === "round_robin" ? <Repeat className="size-3.5" /> : <Swords className="size-3.5" />}
+        {t.format === "round_robin" ? "Round robin" : "Arena"}
+      </span>
       <span className="inline-flex items-center gap-1.5" title="Time control (minutes + increment seconds)">
         <Clock className="size-3.5" />
         <span className="font-mono text-foreground">{t.timeControl.label}</span>
