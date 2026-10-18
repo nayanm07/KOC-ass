@@ -48,10 +48,11 @@ export function useTournament(id: string) {
 }
 
 /** Live data: refreshed instantly by the `tournament:updated` socket ping (see SocketProvider) */
-export function useLeaderboard(id: string) {
+export function useLeaderboard(id: string, enabled = true) {
   return useQuery({
     queryKey: tournamentKeys.leaderboard(id),
     queryFn: () => api<Leaderboard>(`/tournaments/${id}/leaderboard`),
+    enabled: enabled && !!id,
   });
 }
 
