@@ -13,8 +13,8 @@
 | 3 · Matchmaking | ✅ Done |
 | 4 · Live match ★ | ✅ Done |
 | 5 · Leaderboard & stats | ✅ Done |
-| 6 · Quality | 🟡 Mostly done — 74 unit tests; final UI states audit left |
-| 7 · README & submission | ⬜ Not started |
+| 6 · Quality | ✅ Done |
+| 7 · README & submission | 🟡 Done except pushing to GitHub |
 
 ---
 
@@ -57,7 +57,7 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - [x] `docker-compose.yml` (postgres + api + web) + Dockerfiles (api: migrate → seed → start; web: Next standalone)
 - [x] `.env.example` for root / api / web (real `.env` files git-ignored)
 - [x] Postgres running — Docker in WSL, host port **5440** (5432/5433 taken by local Postgres 16/18 installs)
-- [ ] Full `docker compose up --build` (api + web images) verified — do before submission
+- [x] Full `docker compose up --build` (api + web images) verified
 
 ## Phase 1 — Data model & auth ✅ · Req 01
 **Database**
@@ -158,16 +158,19 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 ## Phase 6 — Quality · Req 06, 07, 08
 - [x] Unit tests: scoring/standings (13), join/leave/queue/status rules (37), move/turn validation + game end + clock (18), pairing (6) — **74 total**
 - [x] Shared loading / error / empty state components
-- [ ] Audit: loading / error / empty on every page
+- [x] Audit: loading / error / empty on every page, + route error boundary and 404 page
+- [x] API lint clean (typed socket data, no unsafe `any`), web lint clean, TS strict on both
 - [x] TanStack Query invalidation after every mutation + on socket `match:ended` / `tournament:updated`
 - [x] DD/MM/YYYY dates, viewer-timezone display (stored UTC)
 
 ## Phase 7 — README & submission · Req 09
-- [ ] Setup (env, Postgres, migrations, seed, start both apps), seed credentials
-- [ ] How to play locally (two browsers / one incognito)
-- [ ] Socket event table (name → payload → direction)
-- [ ] Decisions & trade-offs, what I'd do next
-- [ ] Clean-machine test: clone → follow README → works
+- [x] Setup (env, Postgres, migrations, seed, start both apps), seed credentials
+- [x] How to play locally (two browsers / one incognito)
+- [x] Socket event table (name → payload → direction)
+- [x] Decisions & trade-offs, what I'd do next
+- [x] Docker one-command setup verified: clean build → migrate + seed → two-browser live game 16/16
+- [x] Clean-clone test: `npm ci` → 74 tests → API + web production builds
+- [x] No secrets tracked; `.env.example` for root / api / web
 - [ ] Push to GitHub
 
 ---
