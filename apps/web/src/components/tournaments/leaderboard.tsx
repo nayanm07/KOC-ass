@@ -3,6 +3,7 @@
 import { Crown, Eye, Radio, Trophy } from "lucide-react";
 import Link from "next/link";
 import { EmptyState, ErrorState, ListSkeleton } from "@/components/states";
+import { Skeleton } from "@/components/ui/skeleton";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -55,7 +56,16 @@ export function WinnerBanner({ tournament }: { tournament: TournamentDetail }) {
 
 export function TournamentStats({ tournamentId }: { tournamentId: string }) {
   const q = useLeaderboard(tournamentId);
-  if (!q.data) return null;
+  if (q.isPending) {
+    return (
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4" role="status" aria-label="Loading stats">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-[74px]" />
+        ))}
+      </div>
+    );
+  }
+  if (!q.data) return null; // the leaderboard card below shows the error + retry
   const s = q.data.stats;
   const items = [
     { label: "Players", value: s.players },
