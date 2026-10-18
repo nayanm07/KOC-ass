@@ -25,10 +25,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-chess}:${POSTGRES_PASSWORD:-chess}@db:5432/${POSTGRES_DB:-kingdom_chess}
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
       JWT_TTL_SECONDS: 604800
-      WEB_ORIGIN: http://localhost:3000
+      WEB_ORIGIN: http://localhost:${WEB_PORT:-3000}
       COOKIE_SECURE: "false"
     ports:
-      - "4000:4000"
+      - "${API_PORT:-4000}:4000"
     depends_on:
       db:
         condition: service_healthy
@@ -39,9 +39,10 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         API_INTERNAL_URL: http://api:4000
-        NEXT_PUBLIC_SOCKET_URL: http://localhost:4000
+        # The browser connects to the API's published port directly for WebSockets
+        NEXT_PUBLIC_SOCKET_URL: http://localhost:${API_PORT:-4000}
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3000}:3000"
     depends_on:
       - api
 
