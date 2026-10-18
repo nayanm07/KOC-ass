@@ -2,6 +2,8 @@
 
 Coaches run tournaments; students join, get **auto-matched**, and play each other **live** on a shared board with a **server-authoritative clock**; results feed a **leaderboard** in real time.
 
+Two tournament formats: **Arena** (play as many games as you like, paired with the closest-ranked waiting player) and **Round robin** (everyone plays everyone once; the tournament completes itself and declares the winner after the last game).
+
 **Golden path:** join a tournament → *Find opponent* → play the match live → see it on the leaderboard.
 
 | | |
@@ -89,6 +91,7 @@ npm run dev:web        # http://localhost:3000  (Next, Turbopack)
 | `JWT_TTL_SECONDS` | `604800` (7 days) | Session length |
 | `WEB_ORIGIN` | `http://localhost:3000` | CORS origin for Socket.IO |
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
+| `PAIRING_WINDOW_MS` | `1500` | Matchmaking pool window — players queueing within it are paired together by standings (`0` = pair instantly) |
 
 The API **validates its environment at boot** and refuses to start with a clear message if anything is missing or malformed.
 
@@ -107,7 +110,7 @@ The API **validates its environment at boot** and refuses to start with a clear 
 | `npm run db:generate` | Generate a new migration from `apps/api/src/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations |
 | `npm run db:seed` | Seed users + sample tournaments (safe to re-run) |
-| `npm test` | API unit tests (74) |
+| `npm test` | API unit tests (86) |
 
 ---
 
@@ -140,6 +143,8 @@ You need **two separate browser sessions** (cookies are per browser): e.g. one n
 7. When the game ends both players get a result dialog → **Find next opponent** to re-queue, or open the tournament to see the **leaderboard** update live.
 8. **Coach:** the tournament page shows stats, live standings and a **Watch** button on live games (spectator mode). Click **Complete tournament** to declare the winner.
 
+**Round robin:** create a tournament with format *Round robin* (coach → *New tournament*). Players can only be paired with someone they haven't played; the leaderboard shows progress and a crosstable, and the tournament completes itself after the last game. With 3–4 students in separate browsers you can play it to the end.
+
 ---
 
 ## 5. Architecture
@@ -170,7 +175,7 @@ apps/
 | Table | Purpose |
 |---|---|
 | `users` | Coach / student accounts (case-insensitive unique email, bcrypt hash) |
-| `tournaments` | Name, time control (`base_seconds` + `increment_seconds`), status, start time, winner |
+| `tournaments` | Name, format (`arena` / `round_robin`), time control (`base_seconds` + `increment_seconds`), status, start time, winner |
 | `tournament_participants` | Who joined (unique per tournament + user) |
 | `matchmaking_queue` | Players waiting for an opponent (`user_id` unique → one queue at a time) |
 | `matches` | Live game state: FEN, PGN, ply, both clocks, `turn_started_at`, result, end reason |
@@ -212,10 +217,10 @@ Inputs are validated with **class-validator DTOs** (`whitelist` + `forbidNonWhit
 | `GET` | `/health` | public | Liveness |
 | `GET` | `/tournaments?status=open,ongoing&joined=true` | any | List (students never see drafts) |
 | `GET` | `/tournaments/:id` | any | Detail + participants |
-| `GET` | `/tournaments/:id/leaderboard` | any | Standings, winner / current leader, stats |
+| `GET` | `/tournaments/:id/leaderboard` | any | Standings, winner / current leader, stats, round-robin progress |
 | `GET` | `/tournaments/:id/matches` | any | Per-match results (live first) |
-| `POST` | `/tournaments` | coach | Create (`name, description?, baseMinutes, incrementSeconds, startsAt, status?`) |
-| `PATCH` | `/tournaments/:id` | coach | Edit (time control / start locked once started) |
+| `POST` | `/tournaments` | coach | Create (`name, description?, format?, baseMinutes, incrementSeconds, startsAt, status?`) |
+| `PATCH` | `/tournaments/:id` | coach | Edit (format / time control / start locked once started) |
 | `PATCH` | `/tournaments/:id/status` | coach | `draft ⇄ open → ongoing → completed` |
 | `DELETE` | `/tournaments/:id` | coach | Only draft / open (played games are history) |
 | `POST` | `/tournaments/:id/join` | student | Join while `open` |
@@ -234,7 +239,7 @@ Client → server events are acknowledged with the REST envelope: `{ success: tr
 
 | Event | Direction | Payload | Ack / notes |
 |---|---|---|---|
-| `queue:join` | C → S | `{ tournamentId }` | `{ waiting: true, tournamentId, since }`. Students only; must be a participant of an `ongoing` tournament; `ALREADY_IN_MATCH` (+ `details.matchId`) if already playing |
+| `queue:join` | C → S | `{ tournamentId }` | `{ waiting: true, tournamentId, since }`. Students only; must be a participant of an `ongoing` tournament; `ALREADY_IN_MATCH` (+ `details.matchId`) if already playing; `ROUND_ROBIN_DONE` once you've met everyone |
 | `queue:leave` | C → S | `{}` | `{ waiting: false, … }` |
 | `queue:status` | S → C | `{ waiting: true, tournamentId, since }` \| `{ waiting: false, tournamentId, reason? }` | On connect and on every change (`matched`, `left`, `tournament_closed`, `disconnected`) |
 | `match:found` | S → C | `{ matchId, tournamentId, color, opponent: { id, name } }` | Pushed to both players → client navigates to `/match/:id` |
@@ -255,7 +260,7 @@ The contract lives in [`apps/api/src/realtime/events.ts`](apps/api/src/realtime/
 ## 8. Tests
 
 ```bash
-npm test            # from the repo root — 74 API unit tests
+npm test            # from the repo root — 86 API unit tests
 ```
 
 The deterministic logic is pure functions with no DB or Nest, so it's tested directly:
@@ -263,9 +268,9 @@ The deterministic logic is pure functions with no DB or Nest, so it's tested dir
 | Spec | Covers |
 |---|---|
 | `tournaments/standings.spec.ts` (13) | **Result → leaderboard scoring**: win 1 / draw ½ / loss 0, white- and black-side wins, Sonneborn-Berger, wins, head-to-head, shared ranks, winner declaration |
-| `tournaments/tournament.rules.spec.ts` (37) | **Join rules** (role, already joined, status), leave, queue eligibility, every status transition, edit locks, delete protection |
+| `tournaments/tournament.rules.spec.ts` (42) | **Join rules** (role, already joined, status), leave, queue eligibility (incl. round robin done), every status transition, edit locks, delete protection, round-robin game count + completion |
 | `matches/game.rules.spec.ts` (18) | **Move / turn validation**: wrong turn, illegal move, opponent's piece, moves after game over, promotion; checkmate, stalemate, insufficient material, threefold (rebuilt from PGN), resignation, timeout vs. lone king, final PGN; server clock maths (increment, flag) |
-| `matchmaking/pairing.spec.ts` (6) | FIFO pairing, never self-paired, colour assignment |
+| `matchmaking/pairing.spec.ts` (13) | Standings-based pairing (closest points beats queue order, gap ties by waiting time), new opponent preferred over a rematch, round robin never repeats and a blocked anchor doesn't block others, FIFO fallback, colours |
 
 Real-time wiring isn't unit-tested (per the brief), but it was verified end-to-end during development with scripted Socket.IO clients and a headless-Chrome two-player test: 6 students queueing at the same instant → exactly 3 games, nobody double-booked; duplicate move → applied once; move sync ≈ 30 ms; server flag-fall; reconnect restores board + clock.
 
@@ -286,7 +291,9 @@ Real-time wiring isn't unit-tested (per the brief), but it was verified end-to-e
 - **Durable queue in Postgres** (`matchmaking_queue`, `user_id` unique) rather than in memory — survives the request lifecycle and is easy to reason about.
 - **Pairing is serialised per tournament** with `pg_advisory_xact_lock(hash(tournamentId))`. Without it, two players clicking at the same instant could each see only themselves in the queue and both keep waiting. With row-level `SKIP LOCKED` alone that race exists; the advisory lock removes it.
 - **`active_players` (PK = `user_id`)** is inserted in the same transaction that creates the match and deleted in the same transaction that ends it — the database rejects any second concurrent game for a player, regardless of application bugs.
-- **FIFO + random colours.** Standings-based pairing is a stretch goal; `pickPair` is the single place to change.
+- **Standings-based pairing** (pure `pickPair`): the **longest-waiting player is always paired first** (nobody starves), and their opponent is the waiting player they **haven't played yet**, then **closest in points**, then longest waiting. Colours are random. With no standings it degrades to FIFO.
+- **Pairing window** (`PAIRING_WINDOW_MS`, default 1.5 s). If pairing ran on every join, the 2nd player to arrive would always be paired instantly and standings could never matter. The first *Find opponent* in a tournament starts a short timer; everyone who queues before it fires forms one pool. Trade-off: up to 1.5 s extra wait for much better pairings (the same idea as arena "waves" on chess sites).
+- **Round robin**: a pair may meet only once; if the longest waiter has already played everyone currently waiting, the next waiter anchors instead, so one player never blocks the queue. You get `ROUND_ROBIN_DONE` once you've met everyone, and the **last game's result completes the tournament** (winner declared, in the same transaction pattern as the coach's button). Participants are fixed once the tournament starts, so the n(n−1)/2 target can't move. Being mid-game is checked first so `ALREADY_IN_MATCH` (which sends you back to your board) always wins.
 - Queue rows are removed when a player's **last** tab disconnects, when a tournament completes (players are notified), and on server start.
 
 ### Tournaments & leaderboard
@@ -307,7 +314,7 @@ Real-time wiring isn't unit-tested (per the brief), but it was verified end-to-e
 - Board supports drag-and-drop **and click-to-move** (easier for young players), legal-move dots, last-move and check highlights, promotion picker, move-list review, copy PGN.
 
 ### Caveats (single-instance assumptions)
-- Flag timers and draw offers live in the API process; queue cleanup on boot assumes one API instance. Scaling out would need the Socket.IO Redis adapter, a shared timer/scheduler (or "check on read" only) and Redis for draw offers.
+- Flag timers, pairing-window timers and draw offers live in the API process; queue cleanup on boot assumes one API instance. Scaling out would need the Socket.IO Redis adapter, a shared timer/scheduler (or "check on read" only) and Redis for draw offers.
 - No refresh-token rotation or rate limiting on login (would add `@nestjs/throttler`).
 - Lists aren't paginated (fine for an academy's tournament count).
 
@@ -315,7 +322,7 @@ Real-time wiring isn't unit-tested (per the brief), but it was verified end-to-e
 
 ## 10. What I'd do next
 1. Clock starts on white's first move; abort a game if white never moves (no rating/score impact).
-2. Standings-based (Swiss-style) pairing and a "don't rematch the same opponent" rule; optional full round-robin completion.
+2. Proper Swiss rounds (round-by-round pairing with colour balancing) as a third format.
 3. Horizontal scaling: Redis adapter for Socket.IO, distributed flag timers, Redis-backed draw offers.
 4. Opponent presence ("disconnected — 30 s to return") and premoves.
 5. E2E tests in CI (Playwright two-browser flow) and API integration tests against a throwaway Postgres.

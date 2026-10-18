@@ -156,7 +156,7 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - [x] Browser test: coach page updates live when a game ends, winner banner appears on completion — 10/10, no console errors
 
 ## Phase 6 — Quality · Req 06, 07, 08
-- [x] Unit tests: scoring/standings (13), join/leave/queue/status rules (37), move/turn validation + game end + clock (18), pairing (6) — **74 total**
+- [x] Unit tests: scoring/standings (13), join/leave/queue/status + round-robin rules (42), move/turn validation + game end + clock (18), pairing (13) — **86 total**
 - [x] Shared loading / error / empty state components
 - [x] Audit: loading / error / empty on every page, + route error boundary and 404 page
 - [x] API lint clean (typed socket data, no unsafe `any`), web lint clean, TS strict on both
@@ -180,8 +180,9 @@ docker-compose.yml  → postgres (host port 5440) + api + web
 - [x] *(designed in)* Reconnection — board + clock restored from DB on refresh
 - [x] Spectator mode for coach — "Watch" on live games in the coach's tournament page → read-only live board
 - [x] Draw offers, threefold repetition, 50-move rule, increment time controls (`5+3`)
-- [ ] Standings-based matchmaking
-- [ ] Round-robin completion (everyone plays everyone once, auto-complete)
+- [x] Standings-based matchmaking — longest waiter anchors, opponent = new first → closest points → waiting time; 1.5 s pairing window so a pool exists (13 pairing tests)
+- [x] Round-robin completion — `format: round_robin`, never repeats a pair, `ROUND_ROBIN_DONE`, auto-completes with winner after the last game, progress bar + crosstable
+- [x] Verified E2E: standings beat FIFO; 3-player RR deterministic (no repeat, blocked anchor, done, auto-complete, winner); 4-player RR → 6 distinct games, completes itself — 17/17; regressions 21 + 30 + 16 all pass; browser check 3/3
 - [x] Move-list navigation (click a move to review)
 - [x] DD/MM/YYYY dates + viewer-timezone display
 
