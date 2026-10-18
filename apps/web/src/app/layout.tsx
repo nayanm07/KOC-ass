@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+/** Brand type: geometric sans for everything, monospace for eyebrow labels, clocks and moves */
+const sans = Plus_Jakarta_Sans({ variable: "--font-brand-sans", subsets: ["latin"] });
+const mono = JetBrains_Mono({ variable: "--font-brand-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Kingdom of Chess · Tournaments",
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     // Font variables live on <html> because the base layer applies font-sans to <html>
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body className="min-h-screen antialiased">
         <Providers>{children}</Providers>
       </body>
