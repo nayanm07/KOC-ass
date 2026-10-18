@@ -10,11 +10,7 @@ import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
 import type { AuthUser } from '../auth/auth.types';
 import { DRIZZLE, type Database } from '../db/db.module';
 import { activePlayers, matches, matchmakingQueue, tournaments, users } from '../db/schema';
-import {
-  ServerEvents,
-  type MatchFoundPayload,
-  type QueueStatusPayload,
-} from '../realtime/events';
+import { ServerEvents, type MatchFoundPayload, type QueueStatusPayload } from '../realtime/events';
 import { RealtimeService } from '../realtime/realtime.service';
 import { GameService } from '../matches/game.service';
 import { checkCanQueue } from '../tournaments/tournament.rules';
@@ -100,15 +96,16 @@ export class MatchmakingService implements OnApplicationBootstrap {
     return status;
   }
 
-  async leaveQueue(
-    userId: string,
-    reason: 'left' | 'disconnected' = 'left',
-  ): Promise<QueueStatusPayload> {
+  async leaveQueue(userId: string, reason: 'left' | 'disconnected' = 'left'): Promise<QueueStatusPayload> {
     const [removed] = await this.db
       .delete(matchmakingQueue)
       .where(eq(matchmakingQueue.userId, userId))
       .returning({ tournamentId: matchmakingQueue.tournamentId });
-    const status: QueueStatusPayload = { waiting: false, tournamentId: removed?.tournamentId ?? null, reason };
+    const status: QueueStatusPayload = {
+      waiting: false,
+      tournamentId: removed?.tournamentId ?? null,
+      reason,
+    };
     if (removed) this.realtime.toUser(userId, ServerEvents.QueueStatus, status);
     return status;
   }
@@ -150,7 +147,11 @@ export class MatchmakingService implements OnApplicationBootstrap {
         if (!t || t.status !== 'ongoing') return null;
 
         const waiting = await tx
-          .select({ id: matchmakingQueue.id, userId: matchmakingQueue.userId, enqueuedAt: matchmakingQueue.enqueuedAt })
+          .select({
+            id: matchmakingQueue.id,
+            userId: matchmakingQueue.userId,
+            enqueuedAt: matchmakingQueue.enqueuedAt,
+          })
           .from(matchmakingQueue)
           .where(
             and(

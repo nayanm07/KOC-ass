@@ -5,7 +5,6 @@ import {
   integer,
   pgEnum,
   pgTable,
-  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -17,12 +16,7 @@ import {
 
 export const userRole = pgEnum('user_role', ['coach', 'student']);
 
-export const tournamentStatus = pgEnum('tournament_status', [
-  'draft',
-  'open',
-  'ongoing',
-  'completed',
-]);
+export const tournamentStatus = pgEnum('tournament_status', ['draft', 'open', 'ongoing', 'completed']);
 
 export const matchStatus = pgEnum('match_status', ['ongoing', 'completed']);
 
@@ -102,10 +96,7 @@ export const tournaments = pgTable(
     index('tournaments_created_by_idx').on(t.createdById),
     check('tournaments_base_seconds_ck', sql`${t.baseSeconds} BETWEEN 30 AND 10800`),
     check('tournaments_increment_seconds_ck', sql`${t.incrementSeconds} BETWEEN 0 AND 180`),
-    check(
-      'tournaments_completed_at_ck',
-      sql`(${t.status} = 'completed') = (${t.completedAt} IS NOT NULL)`,
-    ),
+    check('tournaments_completed_at_ck', sql`(${t.status} = 'completed') = (${t.completedAt} IS NOT NULL)`),
   ],
 );
 

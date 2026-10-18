@@ -70,7 +70,10 @@ export class MatchesService {
 
   assertCanView(m: Pick<Match, 'whiteId' | 'blackId'>, viewer: AuthUser) {
     if (!colorOf(m, viewer.id) && viewer.role !== 'coach') {
-      throw new ForbiddenException({ code: 'NOT_A_PARTICIPANT', message: 'You are not playing in this match' });
+      throw new ForbiddenException({
+        code: 'NOT_A_PARTICIPANT',
+        message: 'You are not playing in this match',
+      });
     }
   }
 
@@ -142,7 +145,12 @@ export class MatchesService {
       .innerJoin(black, eq(black.id, matches.blackId))
       .where(eq(matches.id, id));
     return row
-      ? { ...row.match, tournamentName: row.tournamentName, whiteName: row.whiteName, blackName: row.blackName }
+      ? {
+          ...row.match,
+          tournamentName: row.tournamentName,
+          whiteName: row.whiteName,
+          blackName: row.blackName,
+        }
       : null;
   }
 

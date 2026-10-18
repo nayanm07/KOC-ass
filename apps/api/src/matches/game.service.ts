@@ -180,7 +180,13 @@ export class GameService implements OnApplicationBootstrap, OnApplicationShutdow
     await this.db.transaction(async (tx) => {
       const locked = await this.lockMatch(tx, matchId);
       if (locked.status !== 'ongoing') throw conflict('GAME_OVER', 'The game is already over');
-      await this.finish(tx, locked, { result: 'draw', reason: 'draw_agreement' }, new Date(), this.frozenClocks(locked));
+      await this.finish(
+        tx,
+        locked,
+        { result: 'draw', reason: 'draw_agreement' },
+        new Date(),
+        this.frozenClocks(locked),
+      );
     });
     await this.afterChange(matchId, true);
     return { drawOffer: null, ended: true };
@@ -283,7 +289,11 @@ export class GameService implements OnApplicationBootstrap, OnApplicationShutdow
         pgn: m.pgn,
       };
       // Room + both players' personal rooms (Socket.IO de-duplicates sockets in several rooms)
-      this.realtime.toRooms([matchRoom(matchId), userRoom(m.whiteId), userRoom(m.blackId)], ServerEvents.MatchEnded, payload);
+      this.realtime.toRooms(
+        [matchRoom(matchId), userRoom(m.whiteId), userRoom(m.blackId)],
+        ServerEvents.MatchEnded,
+        payload,
+      );
       this.realtime.toAll(ServerEvents.TournamentUpdated, { tournamentId: m.tournamentId });
       this.logger.log(`Match ${matchId} ended: ${m.result} by ${m.endReason}`);
     } else {
@@ -307,7 +317,10 @@ export class GameService implements OnApplicationBootstrap, OnApplicationShutdow
   private assertPlayer(m: Match, user: AuthUser): Color {
     const color = colorOf(m, user.id);
     if (!color) {
-      throw new ForbiddenException({ code: 'NOT_A_PARTICIPANT', message: 'Only the two players can do that' });
+      throw new ForbiddenException({
+        code: 'NOT_A_PARTICIPANT',
+        message: 'Only the two players can do that',
+      });
     }
     return color;
   }

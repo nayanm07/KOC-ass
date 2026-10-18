@@ -36,7 +36,11 @@ export interface QueueJoinPayload {
 
 export type QueueStatusPayload =
   | { waiting: true; tournamentId: string; since: string }
-  | { waiting: false; tournamentId: string | null; reason?: 'left' | 'matched' | 'tournament_closed' | 'disconnected' };
+  | {
+      waiting: false;
+      tournamentId: string | null;
+      reason?: 'left' | 'matched' | 'tournament_closed' | 'disconnected';
+    };
 
 export interface MatchFoundPayload {
   matchId: string;

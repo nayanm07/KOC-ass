@@ -4,7 +4,8 @@ const P = (...names: string[]) => names.map((n) => ({ userId: n, name: n }));
 const win = (w: string, b: string): StandingsGame => ({ whiteId: w, blackId: b, result: 'white_win' });
 const loss = (w: string, b: string): StandingsGame => ({ whiteId: w, blackId: b, result: 'black_win' });
 const draw = (w: string, b: string): StandingsGame => ({ whiteId: w, blackId: b, result: 'draw' });
-const byName = (rows: ReturnType<typeof computeStandings>) => Object.fromEntries(rows.map((r) => [r.userId, r]));
+const byName = (rows: ReturnType<typeof computeStandings>) =>
+  Object.fromEntries(rows.map((r) => [r.userId, r]));
 
 describe('standings — result → leaderboard scoring', () => {
   it('scores win = 1, draw = ½, loss = 0', () => {

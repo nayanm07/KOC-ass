@@ -8,7 +8,7 @@ import {
   SubscribeMessage,
   WebSocketGateway,
 } from '@nestjs/websockets';
-import type { Server, Socket } from 'socket.io';
+import type { DefaultEventsMap, Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 import { AUTH_COOKIE, type AuthUser } from '../auth/auth.types';
 import { DrawResponseDto, MatchRefDto, MoveDto } from '../matches/dto/match.dto';
@@ -19,7 +19,8 @@ import { ClientEvents, matchRoom, ServerEvents, userRoom } from './events';
 import { RealtimeService } from './realtime.service';
 import { parseCookies, parsePayload, respond, WsAppError } from './ws-utils';
 
-type AuthedSocket = Socket & { data: { user: AuthUser } };
+/** socket.data is typed via Socket.IO's SocketData generic (set in the handshake middleware) */
+type AuthedSocket = Socket<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, { user: AuthUser }>;
 
 /**
  * One Socket.IO gateway for all live features. Every connection is authenticated in the
@@ -63,9 +64,9 @@ export class PlayGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (!user) return;
     // Only drop them from the queue once their LAST tab is gone
     if ((await this.realtime.userConnectionCount(user.id)) === 0) {
-      await this.matchmaking.leaveQueue(user.id, 'disconnected').catch((e: unknown) =>
-        this.logger.error(`leaveQueue on disconnect failed: ${String(e)}`),
-      );
+      await this.matchmaking
+        .leaveQueue(user.id, 'disconnected')
+        .catch((e: unknown) => this.logger.error(`leaveQueue on disconnect failed: ${String(e)}`));
     }
   }
 

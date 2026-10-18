@@ -6,7 +6,12 @@ export class ListTournamentsQuery {
   /** Comma-separated, e.g. ?status=open,ongoing */
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.split(',').map((s) => s.trim()).filter(Boolean) : value,
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : value,
   )
   @IsIn(tournamentStatus.enumValues, { each: true })
   status?: TournamentStatus[];

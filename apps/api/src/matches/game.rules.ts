@@ -1,4 +1,4 @@
-import { Chess, type Square } from 'chess.js';
+import { Chess } from 'chess.js';
 import type { MatchEndReason, MatchResult } from '../db/schema';
 import { opposite, turnFromFen, type Color } from './clock';
 
@@ -74,7 +74,7 @@ export function playMove(game: Chess, mover: Color, move: MoveInput): AppliedMov
 
   let san: string;
   try {
-    san = game.move({ from: move.from as Square, to: move.to as Square, promotion: move.promotion }).san;
+    san = game.move({ from: move.from, to: move.to, promotion: move.promotion }).san;
   } catch {
     throw new MoveRejected('ILLEGAL_MOVE', `${move.from}→${move.to} is not a legal move`);
   }

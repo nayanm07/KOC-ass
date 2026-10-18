@@ -1,11 +1,4 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 /** Every failed REST response: `{ success: false, error: { statusCode, code, message, details? }, path, timestamp }` */
@@ -19,7 +12,11 @@ export interface ErrorEnvelope {
 /** Postgres error codes we translate into client errors instead of 500s */
 const PG_ERRORS: Record<string, { status: HttpStatus; code: string; message: string }> = {
   '23505': { status: HttpStatus.CONFLICT, code: 'CONFLICT', message: 'Resource already exists' },
-  '23503': { status: HttpStatus.CONFLICT, code: 'FOREIGN_KEY_VIOLATION', message: 'Related resource is missing or still in use' },
+  '23503': {
+    status: HttpStatus.CONFLICT,
+    code: 'FOREIGN_KEY_VIOLATION',
+    message: 'Related resource is missing or still in use',
+  },
   '23514': { status: HttpStatus.BAD_REQUEST, code: 'CHECK_VIOLATION', message: 'Value violates a data rule' },
   '22P02': { status: HttpStatus.BAD_REQUEST, code: 'INVALID_INPUT', message: 'Invalid input syntax' },
 };

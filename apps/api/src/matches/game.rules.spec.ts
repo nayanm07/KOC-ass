@@ -12,12 +12,13 @@ import {
 
 const play = (game: Chess, moves: [string, string][]) => {
   let color: 'white' | 'black' = 'white';
-  let last;
+  let last: ReturnType<typeof playMove> | undefined;
   for (const [from, to] of moves) {
     last = playMove(game, color, { from, to });
     color = color === 'white' ? 'black' : 'white';
   }
-  return last!;
+  if (!last) throw new Error('play() needs at least one move');
+  return last;
 };
 
 const rejection = (fn: () => unknown) => {
@@ -51,7 +52,12 @@ describe('game rules — move & turn validation', () => {
 
   it('rejects any move once the game is over', () => {
     const game = new Chess();
-    play(game, [['f2', 'f3'], ['e7', 'e5'], ['g2', 'g4'], ['d8', 'h4']]); // fool's mate
+    play(game, [
+      ['f2', 'f3'],
+      ['e7', 'e5'],
+      ['g2', 'g4'],
+      ['d8', 'h4'],
+    ]); // fool's mate
     expect(rejection(() => playMove(game, 'white', { from: 'a2', to: 'a3' }))).toBe('GAME_OVER');
   });
 
@@ -64,7 +70,12 @@ describe('game rules — move & turn validation', () => {
 
 describe('game rules — how games end', () => {
   it("detects checkmate and credits the mover (fool's mate → black wins)", () => {
-    const m = play(new Chess(), [['f2', 'f3'], ['e7', 'e5'], ['g2', 'g4'], ['d8', 'h4']]);
+    const m = play(new Chess(), [
+      ['f2', 'f3'],
+      ['e7', 'e5'],
+      ['g2', 'g4'],
+      ['d8', 'h4'],
+    ]);
     expect(m.outcome).toEqual({ result: 'black_win', reason: 'checkmate' });
     expect(m.pgn).toContain('0-1');
   });
@@ -72,7 +83,10 @@ describe('game rules — how games end', () => {
   it('detects stalemate as a draw', () => {
     // Qb6-c7 leaves the black king on a8 with no legal move and not in check
     const game = new Chess('k7/8/1Q6/8/8/8/8/7K w - - 0 1');
-    expect(playMove(game, 'white', { from: 'b6', to: 'c7' }).outcome).toEqual({ result: 'draw', reason: 'stalemate' });
+    expect(playMove(game, 'white', { from: 'b6', to: 'c7' }).outcome).toEqual({
+      result: 'draw',
+      reason: 'stalemate',
+    });
   });
 
   it('detects insufficient material', () => {
@@ -85,7 +99,12 @@ describe('game rules — how games end', () => {
 
   it('detects threefold repetition (needs full history → rebuilt from PGN)', () => {
     const game = new Chess();
-    const shuffle: [string, string][] = [['g1', 'f3'], ['g8', 'f6'], ['f3', 'g1'], ['f6', 'g8']];
+    const shuffle: [string, string][] = [
+      ['g1', 'f3'],
+      ['g8', 'f6'],
+      ['f3', 'g1'],
+      ['f6', 'g8'],
+    ];
     play(game, shuffle);
     const reloaded = loadGame(game.pgn()); // as the server does on every move
     play(reloaded, shuffle.slice(0, 3));
@@ -111,7 +130,10 @@ describe('game rules — how games end', () => {
 
   it('writes the result into the final PGN', () => {
     const game = new Chess();
-    play(game, [['e2', 'e4'], ['e7', 'e5']]);
+    play(game, [
+      ['e2', 'e4'],
+      ['e7', 'e5'],
+    ]);
     expect(finalPgn(game.pgn(), { White: 'A', Black: 'B' }, 'white_win')).toMatch(/1\. e4 e5 1-0$/);
   });
 });
@@ -122,7 +144,11 @@ describe('server clock', () => {
   const state = { whiteTimeMs: 60_000, blackTimeMs: 60_000, turnStartedAt: t0 };
 
   it('only the side to move loses time', () => {
-    expect(liveClock(state, 'white', true, at(5_000))).toEqual({ whiteMs: 55_000, blackMs: 60_000, running: 'white' });
+    expect(liveClock(state, 'white', true, at(5_000))).toEqual({
+      whiteMs: 55_000,
+      blackMs: 60_000,
+      running: 'white',
+    });
   });
 
   it('stops when the game is over', () => {
@@ -131,7 +157,12 @@ describe('server clock', () => {
 
   it('charges think time and adds the increment', () => {
     const r = applyMoveToClock(state, 'white', 2_000, at(10_000));
-    expect(r).toMatchObject({ whiteTimeMs: 52_000, blackTimeMs: 60_000, thinkTimeMs: 10_000, flagged: false });
+    expect(r).toMatchObject({
+      whiteTimeMs: 52_000,
+      blackTimeMs: 60_000,
+      thinkTimeMs: 10_000,
+      flagged: false,
+    });
   });
 
   it('flags a move made after time ran out', () => {

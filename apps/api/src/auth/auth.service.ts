@@ -36,7 +36,10 @@ export class AuthService {
       const p = await this.jwt.verifyAsync<JwtPayload>(token);
       return { id: p.sub, email: p.email, name: p.name, role: p.role };
     } catch {
-      throw new UnauthorizedException({ code: 'INVALID_TOKEN', message: 'Session expired, please log in again' });
+      throw new UnauthorizedException({
+        code: 'INVALID_TOKEN',
+        message: 'Session expired, please log in again',
+      });
     }
   }
 

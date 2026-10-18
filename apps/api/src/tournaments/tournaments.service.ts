@@ -323,7 +323,12 @@ export class TournamentsService {
   }
 
   private toView(
-    r: Tournament & { creatorName: string; winnerName: string | null; participantCount: number; isJoined: boolean },
+    r: Tournament & {
+      creatorName: string;
+      winnerName: string | null;
+      participantCount: number;
+      isJoined: boolean;
+    },
   ): TournamentView {
     return {
       id: r.id,

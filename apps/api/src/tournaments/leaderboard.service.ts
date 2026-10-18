@@ -13,7 +13,14 @@ export interface LeaderboardView {
   winner: { userId: string; name: string } | null;
   /** Current sole leader while still in progress (null if tied / no games) */
   leader: { userId: string; name: string } | null;
-  stats: { players: number; gamesPlayed: number; liveGames: number; whiteWins: number; blackWins: number; draws: number };
+  stats: {
+    players: number;
+    gamesPlayed: number;
+    liveGames: number;
+    whiteWins: number;
+    blackWins: number;
+    draws: number;
+  };
 }
 
 export interface TournamentMatchRow {
@@ -55,7 +62,10 @@ export class LeaderboardService {
     return declareWinner(await this.standings(tournamentId, exec))?.userId ?? null;
   }
 
-  async leaderboard(tournamentId: string, winner: { id: string; name: string } | null): Promise<LeaderboardView> {
+  async leaderboard(
+    tournamentId: string,
+    winner: { id: string; name: string } | null,
+  ): Promise<LeaderboardView> {
     const [standings, [counts]] = await Promise.all([
       this.standings(tournamentId),
       this.db
