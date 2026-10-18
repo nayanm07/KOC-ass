@@ -207,37 +207,55 @@ export function StandingsPanel({ tournament, lb, highlightUserId }: { tournament
 
 /* ───────────────────────── Games table ───────────────────────── */
 
-type GamesFilter = "all" | "live" | "completed";
+type GamesFilter = "all" | "mine" | "live" | "completed";
 
-function PlayerCell({ name, color, won }: { name: string; color: "white" | "black"; won: boolean }) {
+function PlayerCell({ name, color, won, you }: { name: string; color: "white" | "black"; won: boolean; you?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
       <span className={cn("size-3 shrink-0 rounded-[3px] border", color === "white" ? "border-slate-400 bg-white" : "border-primary bg-primary")} />
       <span className={cn("text-primary", won ? "font-bold" : "font-normal")}>{name}</span>
+      {you && <span className="rounded bg-orange-100 px-1 text-[11px] font-bold text-brand-orange">you</span>}
     </span>
   );
 }
 
+/**
+ * Games table. Coach mode: every game opens (Watch / Review).
+ * Student mode (`viewerId` set): a "My games" tab, "(you)" tags, and only your own games open —
+ * the API lets players + coaches open a board, nobody else.
+ */
 export function GamesPanel({
   tournament,
   matches,
   canOpen,
+  viewerId,
 }: {
   tournament: Tournament;
   matches: TournamentMatchRow[];
   canOpen: (m: TournamentMatchRow) => boolean;
+  viewerId?: string;
 }) {
   const [filter, setFilter] = useState<GamesFilter>("all");
+  const isMine = (m: TournamentMatchRow) => !!viewerId && (m.white.id === viewerId || m.black.id === viewerId);
   const live = matches.filter((m) => m.status === "ongoing");
   const done = completedGames(matches);
-  const shown = filter === "live" ? live : filter === "completed" ? done : matches;
+  const mine = matches.filter(isMine);
+  const shown = filter === "live" ? live : filter === "completed" ? done : filter === "mine" ? mine : matches;
   const pgn = buildPgnExport(matches);
+  // chronological game numbers (#1 = first game played)
+  const number = new Map([...matches].sort((a, b) => +new Date(a.startedAt) - +new Date(b.startedAt)).map((m, i) => [m.id, i + 1]));
 
-  const tabs: { v: GamesFilter; label: string; n: number }[] = [
-    { v: "all", label: "All", n: matches.length },
-    { v: "live", label: "Live", n: live.length },
-    { v: "completed", label: "Completed", n: done.length },
-  ];
+  const tabs: { v: GamesFilter; label: string; n: number }[] = viewerId
+    ? [
+        { v: "all", label: "All", n: matches.length },
+        { v: "mine", label: "My games", n: mine.length },
+        { v: "live", label: "Live", n: live.length },
+      ]
+    : [
+        { v: "all", label: "All", n: matches.length },
+        { v: "live", label: "Live", n: live.length },
+        { v: "completed", label: "Completed", n: done.length },
+      ];
 
   return (
     <Panel
@@ -266,7 +284,7 @@ export function GamesPanel({
     >
       {shown.length === 0 ? (
         <EmptyState
-          title={filter === "live" ? "No games in progress" : "No games yet"}
+          title={filter === "live" ? "No games in progress" : filter === "mine" ? "You haven’t played here yet" : "No games yet"}
           description={tournament.status === "ongoing" ? "Players are paired automatically when they click “Find opponent”." : undefined}
         />
       ) : (
@@ -274,7 +292,8 @@ export function GamesPanel({
           <table className="w-full min-w-[560px] text-sm">
             <thead className="bg-[#f6f2ea] font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">White</th>
+                <th className="w-12 py-3 pl-4 text-left font-semibold">#</th>
+                <th className="px-2 py-3 text-left font-semibold">White</th>
                 <th className="px-2 py-3 text-center font-semibold">Result</th>
                 <th className="px-2 py-3 text-left font-semibold">Black</th>
                 <th className="px-2 py-3 text-left font-semibold">How</th>
@@ -284,10 +303,12 @@ export function GamesPanel({
             <tbody>
               {shown.map((m) => {
                 const isLive = m.status === "ongoing";
+                const mineRow = isMine(m);
                 return (
-                  <tr key={m.id} className={cn("border-t", isLive && "bg-emerald-50/40")}>
-                    <td className="px-4 py-3">
-                      <PlayerCell name={m.white.name} color="white" won={m.result === "white_win"} />
+                  <tr key={m.id} className={cn("border-t", isLive && "bg-emerald-50/40", mineRow && "bg-orange-50/60")}>
+                    <td className="py-3 pl-4 font-mono text-xs text-muted-foreground">{number.get(m.id)}</td>
+                    <td className="px-2 py-3">
+                      <PlayerCell name={m.white.name} color="white" won={m.result === "white_win"} you={m.white.id === viewerId} />
                     </td>
                     <td className="px-2 py-3 text-center">
                       {isLive ? (
@@ -299,7 +320,7 @@ export function GamesPanel({
                       )}
                     </td>
                     <td className="px-2 py-3">
-                      <PlayerCell name={m.black.name} color="black" won={m.result === "black_win"} />
+                      <PlayerCell name={m.black.name} color="black" won={m.result === "black_win"} you={m.black.id === viewerId} />
                     </td>
                     <td className="px-2 py-3 font-mono text-xs text-muted-foreground">
                       {isLive
@@ -307,7 +328,16 @@ export function GamesPanel({
                         : m.endReason && `${REASON_LABEL[m.endReason]} · ${fullMoves(m.moves)} moves`}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {canOpen(m) && (
+                      {viewerId && mineRow && isLive ? (
+                        <Link
+                          href={`/match/${m.id}`}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-orange px-3 text-xs font-semibold whitespace-nowrap text-white hover:bg-brand-orange/90"
+                        >
+                          Return to game
+                        </Link>
+                      ) : viewerId && !mineRow ? (
+                        <span className="text-xs text-muted-foreground/70 italic">{isLive ? "In progress" : "Concluded"}</span>
+                      ) : canOpen(m) && (
                         <Link
                           href={`/match/${m.id}`}
                           className={cn(

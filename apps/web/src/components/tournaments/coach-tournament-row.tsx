@@ -23,7 +23,7 @@ import { formatDateTime, fromNow } from "@/lib/format";
 import type { Tournament, TournamentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { MIN_PLAYERS } from "./coach-actions";
-import { formatPoints } from "./leaderboard";
+import { formatPoints } from "./detail/primitives";
 import { TournamentFormDialog } from "./tournament-form-dialog";
 
 const ACCENT: Record<TournamentStatus, string> = {

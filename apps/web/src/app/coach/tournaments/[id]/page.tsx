@@ -142,7 +142,7 @@ export default function CoachTournamentPage() {
             <ChampionBanner tournament={t} lb={lb.data} />
             <StatusSummary tournament={t} lb={lb.data} matches={matches} />
             {t.format === "round_robin" && <CrosstableCard standings={lb.data.standings} matches={matches} completed />}
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
               <Panel eyebrow="Standings" title="Final rank summary" subtitle="Tiebreaks: 1. Sonneborn-Berger · 2. wins · 3. head-to-head">
                 <StandingsTable rows={lb.data.standings} winnerId={lb.data.winner?.userId} />
               </Panel>
