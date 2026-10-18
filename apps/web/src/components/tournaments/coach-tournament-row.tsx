@@ -22,6 +22,7 @@ import { useDeleteTournament, useLeaderboard, useUpdateTournamentStatus } from "
 import { formatDateTime, fromNow } from "@/lib/format";
 import type { Tournament, TournamentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { MIN_PLAYERS } from "./coach-actions";
 import { formatPoints } from "./leaderboard";
 import { TournamentFormDialog } from "./tournament-form-dialog";
 
@@ -39,8 +40,6 @@ const PILL: Record<TournamentStatus, { label: string; cls: string }> = {
   completed: { label: "Completed", cls: "bg-amber-50 text-amber-800" },
 };
 
-/** Players needed before a tournament can start (mirrors the API rule) */
-const MIN_PLAYERS = 2;
 
 const btn = {
   primary:
@@ -106,7 +105,7 @@ function Insight({ t }: { t: Tournament }) {
     parts.push(`${data.stats.liveGames} game${data.stats.liveGames === 1 ? "" : "s"} live`);
   }
   const leaderRow = data.leader && data.standings.find((r) => r.userId === data.leader?.userId);
-  if (leaderRow) parts.push(`${leaderRow.name} leading (${formatPoints(leaderRow.points)} pts)`);
+  if (leaderRow) parts.push(`${leaderRow.name} leading (${formatPoints(leaderRow.points)} pt${leaderRow.points === 1 ? "" : "s"})`);
   else if (data.stats.gamesPlayed === 0) parts.push("no results yet");
   return (
     <p className="flex items-center gap-1.5 text-xs font-medium text-brand-orange">

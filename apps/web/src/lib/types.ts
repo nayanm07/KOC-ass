@@ -106,9 +106,12 @@ export interface TournamentMatchRow {
   status: "ongoing" | "completed";
   result: MatchResult | null;
   endReason: MatchEndReason | null;
+  /** Half-moves played (ply) */
   moves: number;
   startedAt: string;
   endedAt: string | null;
+  /** Coaches only */
+  pgn?: string;
 }
 
 export interface MyMatchRow {

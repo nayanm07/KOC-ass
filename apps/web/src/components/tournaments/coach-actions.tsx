@@ -1,45 +1,20 @@
 "use client";
 
-import { Pencil, Trash2 } from "lucide-react";
+import { CheckCircle2, PlayCircle, SlidersHorizontal, Trash2, Undo2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
 import { useDeleteTournament, useUpdateTournamentStatus } from "@/hooks/use-tournaments";
 import type { Tournament, TournamentStatus } from "@/lib/types";
+import { btn } from "./detail/primitives";
 import { TournamentFormDialog } from "./tournament-form-dialog";
 
-interface TransitionUi {
-  label: string;
-  variant: "default" | "outline";
-  confirm?: { title: string; description: string };
-}
+/** Players needed before a tournament can start (mirrors the API rule) */
+export const MIN_PLAYERS = 2;
 
-const TRANSITIONS: Record<TournamentStatus, TransitionUi> = {
-  open: { label: "Open registration", variant: "default" },
-  draft: { label: "Back to draft", variant: "outline" },
-  ongoing: {
-    label: "Start tournament",
-    variant: "default",
-    confirm: {
-      title: "Start the tournament?",
-      description:
-        "Registration closes and players can start finding opponents. Time control and start time become locked.",
-    },
-  },
-  completed: {
-    label: "Complete tournament",
-    variant: "default",
-    confirm: {
-      title: "Complete the tournament?",
-      description: "No more games can be played and final standings are declared. This cannot be undone.",
-    },
-  },
-};
-
-/** Status buttons (driven by the API's `allowedTransitions`) + edit / delete */
+/** Header actions on the coach's tournament page: edit, status changes (with confirms), delete */
 export function CoachTournamentActions({
-  tournament,
+  tournament: t,
   redirectAfterDelete,
 }: {
   tournament: Tournament;
@@ -49,76 +24,86 @@ export function CoachTournamentActions({
   const setStatus = useUpdateTournamentStatus();
   const del = useDeleteTournament();
   const [editing, setEditing] = useState(false);
-  const [confirming, setConfirming] = useState<TournamentStatus | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirm, setConfirm] = useState<null | "ongoing" | "completed" | "delete">(null);
 
-  const canEdit = tournament.status !== "completed";
-  const canDelete = tournament.status === "draft" || tournament.status === "open";
-  const confirmUi = confirming ? TRANSITIONS[confirming] : null;
-
-  const transition = (to: TournamentStatus) =>
-    setStatus.mutate({ id: tournament.id, status: to }, { onSettled: () => setConfirming(null) });
+  const go = (to: TournamentStatus) => setStatus.mutate({ id: t.id, status: to }, { onSettled: () => setConfirm(null) });
+  const canStart = t.participantCount >= MIN_PLAYERS;
+  const canDelete = t.status === "draft" || t.status === "open";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {tournament.allowedTransitions.map((to) => {
-        const t = TRANSITIONS[to];
-        return (
-          <Button
-            key={to}
-            size="sm"
-            variant={t.variant}
-            disabled={setStatus.isPending}
-            onClick={() => (t.confirm ? setConfirming(to) : transition(to))}
-          >
-            {t.label}
-          </Button>
-        );
-      })}
-      {canEdit && (
-        <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-          <Pencil /> Edit
-        </Button>
-      )}
       {canDelete && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-destructive hover:text-destructive"
-          onClick={() => setConfirmDelete(true)}
-          aria-label="Delete tournament"
-          title="Delete tournament"
-        >
-          <Trash2 />
-        </Button>
+        <button type="button" className={btn.icon} aria-label="Delete tournament" title="Delete" onClick={() => setConfirm("delete")}>
+          <Trash2 className="size-4" />
+        </button>
+      )}
+      {t.status !== "completed" && (
+        <button type="button" className={btn.soft} onClick={() => setEditing(true)}>
+          <SlidersHorizontal className="size-4" /> Edit
+        </button>
       )}
 
-      {editing && <TournamentFormDialog open onOpenChange={setEditing} tournament={tournament} />}
-
-      {confirming && confirmUi?.confirm && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setConfirming(null)}
-          title={confirmUi.confirm.title}
-          description={confirmUi.confirm.description}
-          confirmLabel={confirmUi.label}
-          pending={setStatus.isPending}
-          onConfirm={() => transition(confirming)}
-        />
+      {t.status === "draft" && (
+        <button type="button" className={btn.primary} disabled={setStatus.isPending} onClick={() => go("open")}>
+          <Upload className="size-4" /> Open registration
+        </button>
       )}
+      {t.status === "open" && (
+        <>
+          {t.participantCount === 0 && (
+            <button type="button" className={btn.soft} disabled={setStatus.isPending} onClick={() => go("draft")}>
+              <Undo2 className="size-4" /> Back to draft
+            </button>
+          )}
+          <button
+            type="button"
+            className={btn.orange}
+            disabled={!canStart || setStatus.isPending}
+            title={canStart ? undefined : `At least ${MIN_PLAYERS} players are needed to start`}
+            onClick={() => setConfirm("ongoing")}
+          >
+            <PlayCircle className="size-4" /> Start tournament
+          </button>
+        </>
+      )}
+      {t.status === "ongoing" && (
+        <button type="button" className={btn.primary} disabled={setStatus.isPending} onClick={() => setConfirm("completed")}>
+          <CheckCircle2 className="size-4" /> Complete tournament
+        </button>
+      )}
+
+      {editing && <TournamentFormDialog open onOpenChange={setEditing} tournament={t} />}
 
       <ConfirmDialog
-        open={confirmDelete}
-        onOpenChange={setConfirmDelete}
-        title={`Delete "${tournament.name}"?`}
+        open={confirm === "ongoing"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={`Start “${t.name}”?`}
+        description="Registration closes and players can start finding opponents. Format, time control and start time become locked."
+        confirmLabel="Start tournament"
+        pending={setStatus.isPending}
+        onConfirm={() => go("ongoing")}
+      />
+      <ConfirmDialog
+        open={confirm === "completed"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={`Complete “${t.name}”?`}
+        description="No more games can be played and the winner is declared from the final standings. This cannot be undone."
+        confirmLabel="Complete tournament"
+        pending={setStatus.isPending}
+        onConfirm={() => go("completed")}
+      />
+      <ConfirmDialog
+        open={confirm === "delete"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={`Delete “${t.name}”?`}
         description="This removes the tournament and its participant list. This cannot be undone."
         confirmLabel="Delete"
         destructive
         pending={del.isPending}
         onConfirm={() =>
-          del.mutate(tournament.id, {
+          del.mutate(t.id, {
             onSuccess: () => {
-              setConfirmDelete(false);
+              setConfirm(null);
               if (redirectAfterDelete) router.push(redirectAfterDelete);
             },
           })
