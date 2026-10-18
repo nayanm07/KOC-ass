@@ -42,7 +42,10 @@ export interface MyMatchRow {
   /** From my point of view */
   outcome: 'win' | 'loss' | 'draw' | null;
   endReason: Match['endReason'];
+  /** Half-moves played (ply) */
   moves: number;
+  /** e.g. "5+0" */
+  timeControl: string;
   startedAt: Date;
   endedAt: Date | null;
 }
@@ -114,6 +117,7 @@ export class MatchesService {
         outcome,
         endReason: m.endReason,
         moves: m.ply,
+        timeControl: formatTimeControl(m.baseSeconds, m.incrementSeconds),
         startedAt: m.startedAt,
         endedAt: m.endedAt,
       };
