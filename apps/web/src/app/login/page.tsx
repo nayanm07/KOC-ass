@@ -17,7 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useLogin } from "@/hooks/use-auth";
 import { errorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -155,9 +155,25 @@ function BrandPanel() {
 function LoginForm() {
   const next = useSearchParams().get("next");
   const login = useLogin(next);
+  // Uncontrolled inputs: anything typed (or autofilled) before React hydrates is kept by the browser.
+  // State only mirrors the values for the demo-card highlight; submit reads the form itself.
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    setEmail(emailRef.current?.value ?? "");
+    setPassword(passwordRef.current?.value ?? "");
+  }, []);
+
+  const fill = (e: string, p: string) => {
+    if (emailRef.current) emailRef.current.value = e;
+    if (passwordRef.current) passwordRef.current.value = p;
+    setEmail(e);
+    setPassword(p);
+  };
 
   const selected = DEMO_ACCOUNTS.find((a) => a.email === email && a.password === password)?.email;
 
@@ -174,7 +190,8 @@ function LoginForm() {
         className="mt-8 space-y-5"
         onSubmit={(e) => {
           e.preventDefault();
-          login.mutate({ email, password });
+          const form = new FormData(e.currentTarget);
+          login.mutate({ email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") });
         }}
       >
         {login.isError && (
@@ -205,13 +222,14 @@ function LoginForm() {
           <div className={fieldShell}>
             <Mail className="size-4 shrink-0 text-muted-foreground" />
             <input
+              ref={emailRef}
               id="email"
+              name="email"
               type="email"
               autoComplete="email"
               required
               placeholder="you@kingdomofchess.com"
               className="h-full w-full bg-transparent text-primary outline-none placeholder:text-muted-foreground/70"
-              value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
@@ -224,12 +242,13 @@ function LoginForm() {
           <div className={fieldShell}>
             <Lock className="size-4 shrink-0 text-muted-foreground" />
             <input
+              ref={passwordRef}
               id="password"
+              name="password"
               type={showPassword ? "text" : "password"}
               autoComplete="current-password"
               required
               className="h-full w-full bg-transparent text-primary outline-none"
-              value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
             <button
@@ -272,8 +291,7 @@ function LoginForm() {
               type="button"
               aria-pressed={active}
               onClick={() => {
-                setEmail(a.email);
-                setPassword(a.password);
+                fill(a.email, a.password);
                 login.reset();
               }}
               className={cn(
