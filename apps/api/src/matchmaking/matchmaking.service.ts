@@ -5,17 +5,28 @@ import {
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
+  OnApplicationShutdown,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
 import type { AuthUser } from '../auth/auth.types';
 import { DRIZZLE, type Database } from '../db/db.module';
-import { activePlayers, matches, matchmakingQueue, tournaments, users } from '../db/schema';
+import {
+  activePlayers,
+  matches,
+  matchmakingQueue,
+  tournamentParticipants,
+  tournaments,
+  users,
+} from '../db/schema';
 import { ServerEvents, type MatchFoundPayload, type QueueStatusPayload } from '../realtime/events';
 import { RealtimeService } from '../realtime/realtime.service';
 import { GameService } from '../matches/game.service';
 import { checkCanQueue } from '../tournaments/tournament.rules';
 import { TournamentsService } from '../tournaments/tournaments.service';
-import { assignColors, pickPair } from './pairing';
+import { assignColors, pairKey, pickPair, type PairingContext } from './pairing';
+
+type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
 interface CreatedMatch {
   matchId: string;
@@ -25,20 +36,28 @@ interface CreatedMatch {
 }
 
 @Injectable()
-export class MatchmakingService implements OnApplicationBootstrap {
+export class MatchmakingService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(MatchmakingService.name);
+  /** One pending pairing run per tournament (see schedulePairing) */
+  private readonly pairingTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly tournamentsService: TournamentsService,
     private readonly realtime: RealtimeService,
     private readonly game: GameService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
    * Queue rows belong to live socket connections. After a restart no socket is connected,
    * so any leftover rows are stale. (Single-instance assumption — see README trade-offs.)
    */
+  onApplicationShutdown() {
+    for (const t of this.pairingTimers.values()) clearTimeout(t);
+    this.pairingTimers.clear();
+  }
+
   async onApplicationBootstrap() {
     const removed = await this.db.delete(matchmakingQueue).returning({ id: matchmakingQueue.id });
     if (removed.length) this.logger.log(`Cleared ${removed.length} stale queue entries`);
@@ -48,7 +67,7 @@ export class MatchmakingService implements OnApplicationBootstrap {
   async joinQueue(user: AuthUser, tournamentId: string): Promise<QueueStatusPayload> {
     const since = await this.db.transaction(async (tx) => {
       const [t] = await tx
-        .select({ status: tournaments.status })
+        .select({ status: tournaments.status, format: tournaments.format })
         .from(tournaments)
         .where(eq(tournaments.id, tournamentId))
         .for('share');
@@ -56,11 +75,8 @@ export class MatchmakingService implements OnApplicationBootstrap {
         throw new NotFoundException({ code: 'TOURNAMENT_NOT_FOUND', message: 'Tournament not found' });
       }
 
-      const joined = await this.tournamentsService.isParticipant(tx, tournamentId, user.id);
-      const v = checkCanQueue({ status: t.status, joined });
-      if (v) throw new ConflictException(v);
-
-      // At most one match at a time: send them back to the game they're already in
+      // At most one match at a time: send them back to the game they're already in.
+      // Checked first — "you're mid-game" is the most useful answer (the client navigates there).
       const [active] = await tx
         .select({ matchId: activePlayers.matchId })
         .from(activePlayers)
@@ -72,6 +88,15 @@ export class MatchmakingService implements OnApplicationBootstrap {
           details: { matchId: active.matchId },
         });
       }
+
+      const joined = await this.tournamentsService.isParticipant(tx, tournamentId, user.id);
+      // Round robin: you can only queue while there's someone you haven't played yet
+      const opponentsLeft =
+        t.format === 'round_robin' && joined
+          ? await this.opponentsLeft(tx, tournamentId, user.id)
+          : undefined;
+      const v = checkCanQueue({ status: t.status, joined, opponentsLeft });
+      if (v) throw new ConflictException(v);
 
       // user_id is unique: re-queueing in the same tournament keeps your place;
       // queueing in another tournament moves you there.
@@ -92,8 +117,31 @@ export class MatchmakingService implements OnApplicationBootstrap {
     const status: QueueStatusPayload = { waiting: true, tournamentId, since: since.toISOString() };
     this.realtime.toUser(user.id, ServerEvents.QueueStatus, status);
 
-    await this.pairWaitingPlayers(tournamentId);
+    await this.schedulePairing(tournamentId);
     return status;
+  }
+
+  /**
+   * Pairing window: the first "Find opponent" in a tournament starts a short timer; everyone who
+   * queues before it fires forms one pool, which is then paired by standings. Without a window the
+   * 2nd player to arrive would always be paired instantly and standings could never matter.
+   * PAIRING_WINDOW_MS=0 pairs immediately.
+   */
+  private async schedulePairing(tournamentId: string) {
+    const windowMs = this.config.get<number>('PAIRING_WINDOW_MS') ?? 1500;
+    if (windowMs <= 0) {
+      await this.pairWaitingPlayers(tournamentId);
+      return;
+    }
+    if (this.pairingTimers.has(tournamentId)) return; // a run is already pending for this pool
+    const timer = setTimeout(() => {
+      this.pairingTimers.delete(tournamentId);
+      this.pairWaitingPlayers(tournamentId).catch((e: unknown) =>
+        this.logger.error(`Pairing failed for ${tournamentId}: ${String(e)}`),
+      );
+    }, windowMs);
+    timer.unref?.();
+    this.pairingTimers.set(tournamentId, timer);
   }
 
   async leaveQueue(userId: string, reason: 'left' | 'disconnected' = 'left'): Promise<QueueStatusPayload> {
@@ -138,6 +186,7 @@ export class MatchmakingService implements OnApplicationBootstrap {
         const [t] = await tx
           .select({
             status: tournaments.status,
+            format: tournaments.format,
             baseSeconds: tournaments.baseSeconds,
             incrementSeconds: tournaments.incrementSeconds,
           })
@@ -164,7 +213,9 @@ export class MatchmakingService implements OnApplicationBootstrap {
           )
           .for('update');
 
-        const pair = pickPair(waiting);
+        // Standings-based: closest-ranked opponent, new opponents first; round robin never repeats
+        const context = await this.pairingContext(tx, tournamentId);
+        const pair = pickPair(waiting, { ...context, roundRobin: t.format === 'round_robin' });
         if (!pair) return null;
 
         const { whiteId, blackId } = assignColors(pair[0].userId, pair[1].userId);
@@ -199,6 +250,43 @@ export class MatchmakingService implements OnApplicationBootstrap {
       await this.announce(match);
     }
     return created;
+  }
+
+  /** Who has already played whom (any status) + current half-points (completed games) */
+  private async pairingContext(
+    exec: Executor,
+    tournamentId: string,
+  ): Promise<Required<Omit<PairingContext, 'roundRobin'>>> {
+    const games = await exec
+      .select({ whiteId: matches.whiteId, blackId: matches.blackId, result: matches.result })
+      .from(matches)
+      .where(eq(matches.tournamentId, tournamentId));
+
+    const played = new Set<string>();
+    const halfPoints = new Map<string, number>();
+    const add = (id: string, h: number) => halfPoints.set(id, (halfPoints.get(id) ?? 0) + h);
+    for (const g of games) {
+      played.add(pairKey(g.whiteId, g.blackId));
+      if (g.result === 'white_win') add(g.whiteId, 2);
+      else if (g.result === 'black_win') add(g.blackId, 2);
+      else if (g.result === 'draw') {
+        add(g.whiteId, 1);
+        add(g.blackId, 1);
+      }
+    }
+    return { played, halfPoints };
+  }
+
+  /** Round robin: participants this player has no game with yet */
+  private async opponentsLeft(exec: Executor, tournamentId: string, userId: string): Promise<number> {
+    const [participants, { played }] = await Promise.all([
+      exec
+        .select({ userId: tournamentParticipants.userId })
+        .from(tournamentParticipants)
+        .where(eq(tournamentParticipants.tournamentId, tournamentId)),
+      this.pairingContext(exec, tournamentId),
+    ]);
+    return participants.filter((p) => p.userId !== userId && !played.has(pairKey(p.userId, userId))).length;
   }
 
   private async announce(m: CreatedMatch) {

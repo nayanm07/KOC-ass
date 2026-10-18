@@ -18,6 +18,12 @@ export const userRole = pgEnum('user_role', ['coach', 'student']);
 
 export const tournamentStatus = pgEnum('tournament_status', ['draft', 'open', 'ongoing', 'completed']);
 
+/**
+ * arena       — play as many games as you like; paired with the closest-ranked waiting player
+ * round_robin — everyone plays everyone exactly once; completes automatically
+ */
+export const tournamentFormat = pgEnum('tournament_format', ['arena', 'round_robin']);
+
 export const matchStatus = pgEnum('match_status', ['ongoing', 'completed']);
 
 export const matchResult = pgEnum('match_result', ['white_win', 'black_win', 'draw']);
@@ -82,6 +88,7 @@ export const tournaments = pgTable(
     baseSeconds: integer('base_seconds').notNull(),
     incrementSeconds: integer('increment_seconds').notNull().default(0),
     status: tournamentStatus('status').notNull().default('draft'),
+    format: tournamentFormat('format').notNull().default('arena'),
     startsAt: timestamptz('starts_at').notNull(),
     startedAt: timestamptz('started_at'),
     completedAt: timestamptz('completed_at'),
@@ -301,6 +308,7 @@ export type UserRole = (typeof userRole.enumValues)[number];
 export type Tournament = typeof tournaments.$inferSelect;
 export type NewTournament = typeof tournaments.$inferInsert;
 export type TournamentStatus = (typeof tournamentStatus.enumValues)[number];
+export type TournamentFormat = (typeof tournamentFormat.enumValues)[number];
 export type TournamentParticipant = typeof tournamentParticipants.$inferSelect;
 export type Match = typeof matches.$inferSelect;
 export type NewMatch = typeof matches.$inferInsert;

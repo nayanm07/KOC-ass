@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsISO8601, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsISO8601, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -32,4 +32,8 @@ export class UpdateTournamentDto {
   @IsOptional()
   @IsISO8601({ strict: true })
   startsAt?: string;
+
+  @IsOptional()
+  @IsIn(['arena', 'round_robin'])
+  format?: 'arena' | 'round_robin';
 }

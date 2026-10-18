@@ -2,8 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { DRIZZLE, type Database } from '../db/db.module';
-import { matches, tournamentParticipants, users, type Match } from '../db/schema';
+import { matches, tournamentParticipants, users, type Match, type TournamentFormat } from '../db/schema';
 import { computeStandings, declareWinner, type StandingRow } from './standings';
+import { roundRobinGameCount } from './tournament.rules';
 
 type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -21,6 +22,8 @@ export interface LeaderboardView {
     blackWins: number;
     draws: number;
   };
+  /** Round robin progress (null for arena tournaments) */
+  roundRobin: { totalGames: number; completedGames: number } | null;
 }
 
 export interface TournamentMatchRow {
@@ -65,6 +68,7 @@ export class LeaderboardService {
   async leaderboard(
     tournamentId: string,
     winner: { id: string; name: string } | null,
+    format: TournamentFormat = 'arena',
   ): Promise<LeaderboardView> {
     const [standings, [counts]] = await Promise.all([
       this.standings(tournamentId),
@@ -85,6 +89,10 @@ export class LeaderboardService {
       winner: winner ? { userId: winner.id, name: winner.name } : null,
       leader: leader ? { userId: leader.userId, name: leader.name } : null,
       stats: { players: standings.length, ...counts },
+      roundRobin:
+        format === 'round_robin'
+          ? { totalGames: roundRobinGameCount(standings.length), completedGames: counts.gamesPlayed }
+          : null,
     };
   }
 

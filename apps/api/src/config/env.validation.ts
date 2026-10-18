@@ -27,6 +27,13 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsIn(['true', 'false'])
   COOKIE_SECURE: string = 'false';
+
+  /** Matchmaking pool window: players queueing within it are paired together by standings */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30000)
+  PAIRING_WINDOW_MS: number = 1500;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

@@ -14,6 +14,7 @@ import { DRIZZLE, type Database } from '../db/db.module';
 import { activePlayers, matches, matchMoves, type Match } from '../db/schema';
 import { matchRoom, ServerEvents, userRoom, type MatchEndedPayload } from '../realtime/events';
 import { RealtimeService } from '../realtime/realtime.service';
+import { TournamentsService } from '../tournaments/tournaments.service';
 import { applyMoveToClock, liveClock, opposite, turnFromFen, type Color } from './clock';
 import { DrawOffers } from './draw-offers';
 import type { MoveDto } from './dto/match.dto';
@@ -47,6 +48,7 @@ export class GameService implements OnApplicationBootstrap, OnApplicationShutdow
     private readonly matchesService: MatchesService,
     private readonly realtime: RealtimeService,
     private readonly drawOffers: DrawOffers,
+    private readonly tournaments: TournamentsService,
   ) {}
 
   /* ─────────────────────── Lifecycle ─────────────────────── */
@@ -295,6 +297,10 @@ export class GameService implements OnApplicationBootstrap, OnApplicationShutdow
         payload,
       );
       this.realtime.toAll(ServerEvents.TournamentUpdated, { tournamentId: m.tournamentId });
+      // Round robin: the last game finishing completes the tournament and declares the winner
+      await this.tournaments
+        .autoCompleteIfFinished(m.tournamentId)
+        .catch((e: unknown) => this.logger.error(`Auto-complete failed for ${m.tournamentId}: ${String(e)}`));
       this.logger.log(`Match ${matchId} ended: ${m.result} by ${m.endReason}`);
     } else {
       this.armFlagTimer(m);

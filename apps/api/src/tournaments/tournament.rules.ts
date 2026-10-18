@@ -84,8 +84,16 @@ export function checkCanLeave(ctx: { status: TournamentStatus; joined: boolean }
   return null;
 }
 
-/** Players may queue for games only while the tournament is being played. */
-export function checkCanQueue(ctx: { status: TournamentStatus; joined: boolean }): RuleViolation | null {
+/**
+ * Players may queue for games only while the tournament is being played.
+ * Round robin: only while they still have opponents left to play.
+ */
+export function checkCanQueue(ctx: {
+  status: TournamentStatus;
+  joined: boolean;
+  /** Round robin only: opponents this player hasn't met yet (incl. a game in progress) */
+  opponentsLeft?: number;
+}): RuleViolation | null {
   if (!ctx.joined) return { code: 'NOT_JOINED', message: 'Join the tournament first' };
   if (ctx.status !== 'ongoing') {
     return {
@@ -94,21 +102,42 @@ export function checkCanQueue(ctx: { status: TournamentStatus; joined: boolean }
         ctx.status === 'completed' ? 'This tournament has finished' : 'The tournament has not started yet',
     };
   }
+  if (ctx.opponentsLeft !== undefined && ctx.opponentsLeft <= 0) {
+    return {
+      code: 'ROUND_ROBIN_DONE',
+      message: "You've played everyone in this round robin — wait for the final standings",
+    };
+  }
   return null;
+}
+
+/** Round robin: every pair plays once → n(n−1)/2 games */
+export function roundRobinGameCount(players: number): number {
+  return players < 2 ? 0 : (players * (players - 1)) / 2;
+}
+
+/** Round robin auto-completion: every pairing has a finished game and nothing is still live */
+export function isRoundRobinFinished(ctx: {
+  players: number;
+  completedGames: number;
+  liveGames: number;
+}): boolean {
+  const total = roundRobinGameCount(ctx.players);
+  return total > 0 && ctx.liveGames === 0 && ctx.completedGames >= total;
 }
 
 /** Which fields a coach may edit in each status. */
 export function checkCanEdit(
   status: TournamentStatus,
-  fields: { schedule: boolean; timeControl: boolean },
+  fields: { schedule: boolean; timeControl: boolean; format?: boolean },
 ): RuleViolation | null {
   if (status === 'completed') {
     return { code: 'TOURNAMENT_COMPLETED', message: 'A completed tournament can no longer be edited' };
   }
-  if (status === 'ongoing' && (fields.timeControl || fields.schedule)) {
+  if (status === 'ongoing' && (fields.timeControl || fields.schedule || fields.format)) {
     return {
       code: 'TOURNAMENT_LOCKED',
-      message: 'Time control and start time are locked once the tournament has started',
+      message: 'Format, time control and start time are locked once the tournament has started',
     };
   }
   return null;

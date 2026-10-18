@@ -7,6 +7,8 @@ import {
   checkCanQueue,
   checkStatusTransition,
   formatTimeControl,
+  isRoundRobinFinished,
+  roundRobinGameCount,
 } from './tournament.rules';
 
 describe('tournament rules', () => {
@@ -55,6 +57,26 @@ describe('tournament rules', () => {
     });
     it.each(['draft', 'open', 'completed'] as const)('rejects queueing in a %s tournament', (status) => {
       expect(checkCanQueue({ status, joined: true })?.code).toBe('TOURNAMENT_NOT_ONGOING');
+    });
+    it('round robin: allows queueing while opponents are left', () => {
+      expect(checkCanQueue({ status: 'ongoing', joined: true, opponentsLeft: 1 })).toBeNull();
+    });
+    it('round robin: rejects once you have played everyone', () => {
+      expect(checkCanQueue({ status: 'ongoing', joined: true, opponentsLeft: 0 })?.code).toBe(
+        'ROUND_ROBIN_DONE',
+      );
+    });
+  });
+
+  describe('round robin', () => {
+    it('needs n(n−1)/2 games', () => {
+      expect([1, 2, 3, 4, 6].map(roundRobinGameCount)).toEqual([0, 1, 3, 6, 15]);
+    });
+    it('finishes only when every game is done and nothing is live', () => {
+      expect(isRoundRobinFinished({ players: 4, completedGames: 6, liveGames: 0 })).toBe(true);
+      expect(isRoundRobinFinished({ players: 4, completedGames: 5, liveGames: 0 })).toBe(false);
+      expect(isRoundRobinFinished({ players: 4, completedGames: 5, liveGames: 1 })).toBe(false);
+      expect(isRoundRobinFinished({ players: 1, completedGames: 0, liveGames: 0 })).toBe(false);
     });
   });
 
@@ -111,6 +133,11 @@ describe('tournament rules', () => {
     it('allows any edit before the start', () => {
       expect(checkCanEdit('draft', { schedule: true, timeControl: true })).toBeNull();
       expect(checkCanEdit('open', { schedule: true, timeControl: true })).toBeNull();
+    });
+    it('locks the format once ongoing', () => {
+      expect(checkCanEdit('ongoing', { schedule: false, timeControl: false, format: true })?.code).toBe(
+        'TOURNAMENT_LOCKED',
+      );
     });
     it('locks schedule and time control once ongoing, but allows renaming', () => {
       expect(checkCanEdit('ongoing', { schedule: false, timeControl: true })?.code).toBe('TOURNAMENT_LOCKED');

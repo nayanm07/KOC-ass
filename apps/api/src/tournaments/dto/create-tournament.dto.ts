@@ -31,6 +31,11 @@ export class CreateTournamentDto {
   @IsISO8601({ strict: true }, { message: 'startsAt must be an ISO-8601 date-time' })
   startsAt!: string;
 
+  /** arena (default): unlimited games, closest-ranked pairing · round_robin: everyone plays everyone once */
+  @IsOptional()
+  @IsIn(['arena', 'round_robin'])
+  format?: 'arena' | 'round_robin';
+
   /** A coach may publish immediately; defaults to draft */
   @IsOptional()
   @IsIn(['draft', 'open'])

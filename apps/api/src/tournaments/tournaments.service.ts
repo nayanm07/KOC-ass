@@ -12,6 +12,7 @@ import {
   tournaments,
   users,
   type Tournament,
+  type TournamentFormat,
   type TournamentStatus,
 } from '../db/schema';
 import type { CreateTournamentDto } from './dto/create-tournament.dto';
@@ -26,6 +27,7 @@ import {
   checkCanLeave,
   checkStatusTransition,
   formatTimeControl,
+  isRoundRobinFinished,
   type RuleViolation,
 } from './tournament.rules';
 
@@ -37,6 +39,7 @@ export interface TournamentView {
   name: string;
   description: string | null;
   status: TournamentStatus;
+  format: TournamentFormat;
   timeControl: { baseSeconds: number; incrementSeconds: number; label: string };
   startsAt: Date;
   startedAt: Date | null;
@@ -110,7 +113,7 @@ export class TournamentsService {
   /** Standings (win 1 / draw ½ / loss 0, tiebreaks documented in standings.ts) + stats */
   async leaderboard(viewer: AuthUser, id: string): Promise<LeaderboardView> {
     const t = await this.findOne(viewer, id); // visibility rules (students never see drafts)
-    return this.leaderboards.leaderboard(id, t.winner);
+    return this.leaderboards.leaderboard(id, t.winner, t.format);
   }
 
   /** Per-match results */
@@ -131,6 +134,7 @@ export class TournamentsService {
         incrementSeconds: dto.incrementSeconds,
         startsAt: new Date(dto.startsAt),
         status: dto.status ?? 'draft',
+        format: dto.format ?? 'arena',
         createdById: coach.id,
       })
       .returning({ id: tournaments.id });
@@ -144,6 +148,7 @@ export class TournamentsService {
       const v = checkCanEdit(t.status, {
         schedule: dto.startsAt !== undefined,
         timeControl: dto.baseMinutes !== undefined || dto.incrementSeconds !== undefined,
+        format: dto.format !== undefined && dto.format !== t.format,
       });
       if (v) throw violation(v);
 
@@ -155,6 +160,7 @@ export class TournamentsService {
           ...(dto.baseMinutes !== undefined && { baseSeconds: dto.baseMinutes * 60 }),
           ...(dto.incrementSeconds !== undefined && { incrementSeconds: dto.incrementSeconds }),
           ...(dto.startsAt !== undefined && { startsAt: new Date(dto.startsAt) }),
+          ...(dto.format !== undefined && { format: dto.format }),
         })
         .where(eq(tournaments.id, id));
     });
@@ -194,15 +200,45 @@ export class TournamentsService {
         .returning({ userId: matchmakingQueue.userId });
     });
 
-    for (const { userId } of dequeued) {
-      this.realtime.toUser(userId, ServerEvents.QueueStatus, {
-        waiting: false,
-        tournamentId: id,
-        reason: 'tournament_closed',
-      } satisfies QueueStatusPayload);
-    }
+    this.notifyQueueClosed(id, dequeued);
     this.announce(id);
     return this.findOne(coach, id);
+  }
+
+  /**
+   * Round robin: called after every game ends. Once every pairing has played (and nothing is live)
+   * the tournament completes itself and the winner is declared — same transaction as the coach's button.
+   */
+  async autoCompleteIfFinished(id: string): Promise<boolean> {
+    const dequeued = await this.db.transaction(async (tx) => {
+      const t = await this.lockTournament(tx, id, 'update');
+      if (t.status !== 'ongoing' || t.format !== 'round_robin') return null;
+
+      const [players, liveGames, [{ completedGames }]] = await Promise.all([
+        this.countParticipants(tx, id),
+        this.countLiveMatches(tx, id),
+        tx
+          .select({ completedGames: sql<number>`count(*)::int` })
+          .from(matches)
+          .where(and(eq(matches.tournamentId, id), eq(matches.status, 'completed'))),
+      ]);
+      if (!isRoundRobinFinished({ players, completedGames, liveGames })) return null;
+
+      const winnerId = await this.leaderboards.computeWinnerId(id, tx);
+      await tx
+        .update(tournaments)
+        .set({ status: 'completed', completedAt: new Date(), winnerId })
+        .where(eq(tournaments.id, id));
+      return tx
+        .delete(matchmakingQueue)
+        .where(eq(matchmakingQueue.tournamentId, id))
+        .returning({ userId: matchmakingQueue.userId });
+    });
+
+    if (!dequeued) return false;
+    this.notifyQueueClosed(id, dequeued);
+    this.announce(id);
+    return true;
   }
 
   async remove(id: string): Promise<{ id: string; deleted: true }> {
@@ -262,6 +298,16 @@ export class TournamentsService {
   }
 
   /* ─────────────────────── Helpers ─────────────────────── */
+
+  private notifyQueueClosed(tournamentId: string, dequeued: { userId: string }[]) {
+    for (const { userId } of dequeued) {
+      this.realtime.toUser(userId, ServerEvents.QueueStatus, {
+        waiting: false,
+        tournamentId,
+        reason: 'tournament_closed',
+      } satisfies QueueStatusPayload);
+    }
+  }
 
   /** Tell every open client this tournament changed, so lists / leaderboards refetch */
   private announce(tournamentId: string) {
@@ -335,6 +381,7 @@ export class TournamentsService {
       name: r.name,
       description: r.description,
       status: r.status,
+      format: r.format,
       timeControl: {
         baseSeconds: r.baseSeconds,
         incrementSeconds: r.incrementSeconds,
