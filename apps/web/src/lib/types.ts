@@ -122,7 +122,10 @@ export interface MyMatchRow {
   status: "ongoing" | "completed";
   outcome: "win" | "loss" | "draw" | null;
   endReason: MatchEndReason | null;
+  /** Half-moves played (ply) */
   moves: number;
+  /** e.g. "5+0" */
+  timeControl: string;
   startedAt: string;
   endedAt: string | null;
 }

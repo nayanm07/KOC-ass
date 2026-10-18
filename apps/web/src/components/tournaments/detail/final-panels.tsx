@@ -11,6 +11,7 @@ import {
   extremeGames,
   formatMinutes,
   fullMoves,
+  movesLabel,
   REASON_LABEL,
   scorePercent,
 } from "@/lib/tournament-stats";
@@ -200,7 +201,7 @@ export function GameArchive({ matches }: { matches: TournamentMatchRow[] }) {
             </div>
             <div className="mt-3 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
               <span>
-                {m.endReason && REASON_LABEL[m.endReason]} · {fullMoves(m.moves)} moves
+                {m.endReason && REASON_LABEL[m.endReason]} · {movesLabel(fullMoves(m.moves))}
               </span>
               <Link href={`/match/${m.id}`} className="font-semibold text-brand-orange hover:underline">
                 Review ›

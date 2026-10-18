@@ -13,6 +13,7 @@ import {
   fileSlug,
   formatMinutes,
   fullMoves,
+  movesLabel,
   REASON_LABEL,
   scorePercent,
   sideToMove,
@@ -325,7 +326,7 @@ export function GamesPanel({
                     <td className="px-2 py-3 font-mono text-xs text-muted-foreground">
                       {isLive
                         ? `Move ${fullMoves(m.moves) + (m.moves % 2 === 0 ? 1 : 0)} · ${sideToMove(m.moves)} to move`
-                        : m.endReason && `${REASON_LABEL[m.endReason]} · ${fullMoves(m.moves)} moves`}
+                        : m.endReason && `${REASON_LABEL[m.endReason]} · ${movesLabel(fullMoves(m.moves))}`}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {viewerId && mineRow && isLive ? (

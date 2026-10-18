@@ -19,6 +19,21 @@ export const REASON_LABEL: Record<MatchEndReason, string> = {
   draw_agreement: "Agreed",
 };
 
+/** How a game ended, as a phrase: "by checkmate", "on time", "by agreement" … */
+export const END_PHRASE: Record<MatchEndReason, string> = {
+  checkmate: "by checkmate",
+  resignation: "by resignation",
+  timeout: "on time",
+  stalemate: "by stalemate",
+  insufficient_material: "by insufficient material",
+  threefold_repetition: "by repetition",
+  fifty_move_rule: "by the 50-move rule",
+  draw_agreement: "by agreement",
+};
+
+/** "1 move", "34 moves" */
+export const movesLabel = (n: number) => `${n} move${n === 1 ? "" : "s"}`;
+
 export function completedGames(matches: TournamentMatchRow[]) {
   return matches.filter((m) => m.status === "completed" && m.result);
 }
