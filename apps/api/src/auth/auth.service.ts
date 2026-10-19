@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import type { CookieOptions } from 'express';
 import { UsersService, type PublicUser } from '../users/users.service';
-import { SOCKET_TICKET_TTL_SECONDS, type AuthUser, type JwtPayload, type TokenKind } from './auth.types';
+import type { AuthUser, JwtPayload } from './auth.types';
 
 // Compared against when the email doesn't exist, so response time doesn't reveal which emails are registered
 const DUMMY_HASH = bcrypt.hashSync('timing-attack-dummy', 10);
@@ -30,27 +30,10 @@ export class AuthService {
     return { user: UsersService.toPublic(updated), token };
   }
 
-  /**
-   * Short-lived ticket for the Socket.IO handshake. Fetched through the same-origin proxy (where the
-   * httpOnly cookie is sent), so the socket can authenticate even when the API is on another domain.
-   */
-  async socketTicket(user: AuthUser): Promise<string> {
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      typ: 'ws',
-    };
-    return this.jwt.signAsync(payload, { expiresIn: SOCKET_TICKET_TTL_SECONDS });
-  }
-
-  /** Used by both the REST guard (session cookie) and the Socket.IO handshake (cookie or ticket) */
-  async verifyToken(token: string, kind: TokenKind = 'session'): Promise<AuthUser> {
+  /** Used by both the REST guard and the Socket.IO handshake */
+  async verifyToken(token: string): Promise<AuthUser> {
     try {
       const p = await this.jwt.verifyAsync<JwtPayload>(token);
-      // A socket ticket must never work as a REST session, and vice versa
-      if ((p.typ ?? 'session') !== kind) throw new Error('wrong token kind');
       return { id: p.sub, email: p.email, name: p.name, role: p.role };
     } catch {
       throw new UnauthorizedException({

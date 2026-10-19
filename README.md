@@ -27,7 +27,6 @@ Two tournament formats: **Arena** (play as many games as you like, paired with t
 9. [Decisions & trade-offs](#9-decisions--trade-offs)
 10. [What I'd do next](#10-what-id-do-next)
 11. [Troubleshooting](#11-troubleshooting)
-12. [Deployment (Vercel + Render)](#12-deployment-vercel--render)
 
 ---
 
@@ -111,7 +110,7 @@ The API **validates its environment at boot** and refuses to start with a clear 
 | `npm run db:generate` | Generate a new migration from `apps/api/src/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations |
 | `npm run db:seed` | Seed users + sample tournaments (safe to re-run) |
-| `npm test` | API unit tests (90) |
+| `npm test` | API unit tests (86) |
 
 ---
 
@@ -214,7 +213,6 @@ Inputs are validated with **class-validator DTOs** (`whitelist` + `forbidNonWhit
 |---|---|---|---|
 | `POST` | `/auth/login` | public | Sets the httpOnly JWT cookie |
 | `POST` | `/auth/logout` | public | Clears the cookie |
-| `GET` | `/auth/socket-ticket` | any | 60-second ticket for the Socket.IO handshake (see §7) |
 | `GET` | `/me` | any | Current user |
 | `GET` | `/health` | public | Liveness |
 | `GET` | `/tournaments?status=open,ongoing&joined=true` | any | List (students never see drafts) |
@@ -235,7 +233,7 @@ Inputs are validated with **class-validator DTOs** (`whitelist` + `forbidNonWhit
 
 ## 7. Socket.IO events
 
-The socket connects to the API origin directly. The **handshake is authenticated** with a **60-second socket ticket** (a JWT with `typ: "ws"`) that the client fetches from `GET /auth/socket-ticket` through the same-origin proxy on every (re)connect, or with the httpOnly session cookie when the API is same-site (local dev). This keeps sockets working when the web app and API are on different domains (Vercel + Render), where the browser won't send the cookie to the API. A ticket can't be used as a REST session and vice versa. Unauthenticated / forged → `connect_error: UNAUTHENTICATED`. Each user joins a private room `user:<id>`; each game has a room `match:<id>` that **only its two players (and coaches, read-only) may join**.
+The socket connects to the API origin with `withCredentials`; the **handshake is authenticated with the same httpOnly JWT cookie** (unauthenticated / forged → `connect_error: UNAUTHENTICATED`). Each user joins a private room `user:<id>`; each game has a room `match:<id>` that **only its two players (and coaches, read-only) may join**.
 
 Client → server events are acknowledged with the REST envelope: `{ success: true, data }` or `{ success: false, error: { code, message, details? } }`. Payloads are validated with class-validator DTOs.
 
@@ -262,7 +260,7 @@ The contract lives in [`apps/api/src/realtime/events.ts`](apps/api/src/realtime/
 ## 8. Tests
 
 ```bash
-npm test            # from the repo root — 90 API unit tests
+npm test            # from the repo root — 86 API unit tests
 ```
 
 The deterministic logic is pure functions with no DB or Nest, so it's tested directly:
@@ -306,7 +304,7 @@ Real-time wiring isn't unit-tested (per the brief), but it was verified end-to-e
 - **Live leaderboards without polling:** a tiny `tournament:updated { tournamentId }` ping is broadcast on join/leave/status/pairing/game end; clients invalidate their TanStack Query caches. It carries no private data.
 
 ### Auth & API
-- **JWT in an httpOnly, SameSite=Lax cookie** — not readable by JS. **Next rewrites `/api/*` to the API**, so the cookie is first-party and REST needs no CORS; only the WebSocket connects to the API origin directly (cookies aren't port-scoped on `localhost`). In the deployed setup (web and API on different domains) the socket authenticates with a short-lived **socket ticket** fetched through the proxy, so the session cookie never has to be cross-site; `COOKIE_SECURE=true` behind HTTPS.
+- **JWT in an httpOnly, SameSite=Lax cookie** — not readable by JS. **Next rewrites `/api/*` to the API**, so the cookie is first-party and REST needs no CORS; only the WebSocket connects to the API origin directly (cookies aren't port-scoped on `localhost`). In production behind different domains I'd also route the socket through the same origin (reverse proxy) and set `COOKIE_SECURE=true`.
 - **Role checks on both ends:** global `JwtAuthGuard` (opt out with `@Public()`) + `RolesGuard` (`@Roles('coach')`) on the API; Next middleware redirects by role early, and the app shell re-checks against the verified `/me`. The middleware only *decodes* the JWT for routing — the API verifies it on every request.
 - Login is timing-safe (a dummy bcrypt compare for unknown emails), emails are case-insensitive, Postgres constraint errors are mapped to `409/400` instead of `500`.
 - The login form declares `method="post"` and keeps *Sign in* disabled until the page is interactive, so a click before hydration can never fall back to a GET that would put credentials in the URL.
@@ -341,22 +339,3 @@ Real-time wiring isn't unit-tested (per the brief), but it was verified end-to-e
 - **Windows: `npm install` hangs or fails with locked files** — stop `npm run dev:api` / `dev:web` first (dev servers lock files in `node_modules`).
 - **Next dev shows a 500 after adding routes / layout changes don't appear** — stop the dev server, delete `apps/web/.next`, start again.
 - **Socket shows "Offline"** — the API must be reachable at `NEXT_PUBLIC_SOCKET_URL` and `WEB_ORIGIN` must match the web origin exactly.
-
----
-
-## 12. Deployment (Vercel + Render)
-
-The web app is a normal Next.js app (Vercel). The API needs a long-running process for WebSockets and timers, so it runs as a Docker service on Render with Render Postgres. `render.yaml` is a Render Blueprint that creates both.
-
-```
-Browser ──► Vercel (Next.js) ──rewrite /api/*──► Render (NestJS) ──► Render Postgres
-   └──────────── Socket.IO (60 s ticket in the handshake) ─────────────┘
-```
-
-1. **API + database (Render):** Dashboard → **New → Blueprint** → select this repo. When asked for `WEB_ORIGIN`, enter the Vercel URL you'll use (e.g. `https://koc-ass.vercel.app`). The container runs migrations and the seed on start. Note the API URL, e.g. `https://koc-api.onrender.com`.
-2. **Web (Vercel):** **Add New → Project** → import this repo → **Root Directory: `apps/web`** (framework: Next.js). Environment variables, set before the first build because both are baked in at build time:
-   - `API_INTERNAL_URL` = the Render API URL
-   - `NEXT_PUBLIC_SOCKET_URL` = the Render API URL
-3. If the final Vercel URL differs from what you entered in step 1, update `WEB_ORIGIN` on Render (it redeploys automatically).
-
-Free-tier notes: a free Render service sleeps after 15 minutes idle, so the first request can take ~50 s to wake it (an uptime pinger on `/api/v1/health` keeps it awake). Free Render Postgres expires after 30 days.

@@ -4,7 +4,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
-import { AUTH_COOKIE, SOCKET_TICKET_TTL_SECONDS, type AuthUser } from './auth.types';
+import { AUTH_COOKIE, type AuthUser } from './auth.types';
 import { LoginDto } from './dto/login.dto';
 
 @Controller('auth')
@@ -29,12 +29,6 @@ export class AuthController {
     const { maxAge: _maxAge, ...opts } = this.auth.cookieOptions();
     res.clearCookie(AUTH_COOKIE, opts);
     return { loggedOut: true };
-  }
-
-  /** GET /api/v1/auth/socket-ticket — 60 s token for the Socket.IO handshake (works cross-domain) */
-  @Get('socket-ticket')
-  async socketTicket(@CurrentUser() user: AuthUser) {
-    return { ticket: await this.auth.socketTicket(user), expiresIn: SOCKET_TICKET_TTL_SECONDS };
   }
 }
 

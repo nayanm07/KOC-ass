@@ -11,6 +11,3 @@ coverage/
 .DS_Store
 .vscode/
 .idea/
-.vercel/
-
-.vercel

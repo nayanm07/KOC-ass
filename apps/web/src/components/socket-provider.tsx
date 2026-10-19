@@ -28,21 +28,9 @@ const SocketContext = createContext<SocketContextValue | null>(null);
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:4000";
 
 /**
- * Fetched through the same-origin /api proxy (where the httpOnly cookie IS sent) on every
- * (re)connect. Lets the socket authenticate when the API lives on another domain, where the
- * browser won't send our cookie. If it fails, the handshake falls back to the cookie.
- */
-function socketAuth(cb: (data: object) => void) {
-  fetch("/api/v1/auth/socket-ticket", { credentials: "same-origin", cache: "no-store" })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((j: { data?: { ticket?: string } } | null) => cb(j?.data?.ticket ? { ticket: j.data.ticket } : {}))
-    .catch(() => cb({}));
-}
-
-/**
- * One Socket.IO connection per logged-in tab, authenticated with a short-lived ticket (or the
- * httpOnly cookie when same-site). Global listeners live here so a "match found" push drops the
- * player into the game from any page.
+ * One Socket.IO connection per logged-in tab. The browser sends the httpOnly auth cookie in the
+ * handshake (withCredentials). Global listeners live here so a "match found" push drops the player
+ * into the game from any page.
  */
 export function SocketProvider({ userId, children }: { userId: string; children: React.ReactNode }) {
   const router = useRouter();
@@ -52,7 +40,7 @@ export function SocketProvider({ userId, children }: { userId: string; children:
   const [queue, setQueue] = useState<QueueStatus>({ waiting: false, tournamentId: null });
 
   useEffect(() => {
-    const s = io(SOCKET_URL, { withCredentials: true, transports: ["websocket", "polling"], auth: socketAuth });
+    const s = io(SOCKET_URL, { withCredentials: true, transports: ["websocket", "polling"] });
     setSocket(s);
 
     s.on("connect", () => setConnection("connected"));

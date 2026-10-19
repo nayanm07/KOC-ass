@@ -40,13 +40,10 @@ export class PlayGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   afterInit(server: Server) {
     this.realtime.attach(server);
     server.use((socket, next) => {
-      // Ticket from /auth/socket-ticket (cross-domain deploys), else the session cookie (same site)
-      const auth = socket.handshake.auth as { ticket?: unknown } | undefined;
-      const ticket = typeof auth?.ticket === 'string' && auth.ticket ? auth.ticket : null;
-      const cookie = parseCookies(socket.handshake.headers.cookie)[AUTH_COOKIE];
-      if (!ticket && !cookie) return next(new Error('UNAUTHENTICATED'));
+      const token = parseCookies(socket.handshake.headers.cookie)[AUTH_COOKIE];
+      if (!token) return next(new Error('UNAUTHENTICATED'));
       this.auth
-        .verifyToken(ticket ?? cookie, ticket ? 'ws' : 'session')
+        .verifyToken(token)
         .then((user) => {
           (socket as AuthedSocket).data.user = user;
           next();
