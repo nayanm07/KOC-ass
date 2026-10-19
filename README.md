@@ -307,8 +307,11 @@ Real-time wiring isn't unit-tested (per the brief), but it was verified end-to-e
 - **JWT in an httpOnly, SameSite=Lax cookie** — not readable by JS. **Next rewrites `/api/*` to the API**, so the cookie is first-party and REST needs no CORS; only the WebSocket connects to the API origin directly (cookies aren't port-scoped on `localhost`). In production behind different domains I'd also route the socket through the same origin (reverse proxy) and set `COOKIE_SECURE=true`.
 - **Role checks on both ends:** global `JwtAuthGuard` (opt out with `@Public()`) + `RolesGuard` (`@Roles('coach')`) on the API; Next middleware redirects by role early, and the app shell re-checks against the verified `/me`. The middleware only *decodes* the JWT for routing — the API verifies it on every request.
 - Login is timing-safe (a dummy bcrypt compare for unknown emails), emails are case-insensitive, Postgres constraint errors are mapped to `409/400` instead of `500`.
+- The login form declares `method="post"` and keeps *Sign in* disabled until the page is interactive, so a click before hydration can never fall back to a GET that would put credentials in the URL.
 
 ### Frontend
+- **Design:** screens were mocked in Google Stitch from a brand prompt (navy / orange / cream, Plus Jakarta Sans + JetBrains Mono), then rebuilt here with **real data only**: the mocks' invented ratings, FIDE claims, rounds/boards, engine evaluations and opening names were replaced by numbers the app actually computes (standings, streaks, material balance from the position, average game length).
+- Live match: the board is sized from the viewport height so **both clocks are always visible without scrolling**; captured pieces and the material bar are computed from the FEN (no engine).
 - TanStack Query for all REST with hierarchical keys and invalidation after every mutation; one Socket.IO connection per tab via a provider; shared **loading / error (with retry) / empty** components on every screen, plus a route error boundary and 404.
 - Dates are stored as UTC (`timestamptz`) and shown as **DD/MM/YYYY** in the viewer's timezone; the create form labels the timezone.
 - Board supports drag-and-drop **and click-to-move** (easier for young players), legal-move dots, last-move and check highlights, promotion picker, move-list review, copy PGN.
