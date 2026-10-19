@@ -1,7 +1,7 @@
 "use client";
 
 import { Chess, type Square } from "chess.js";
-import { ArrowLeft, Flag, Handshake, RefreshCw, WifiOff } from "lucide-react";
+import { ArrowLeft, CalendarDays, Eye, Flag, Handshake, RefreshCw, Timer, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -9,14 +9,15 @@ import { Chessboard } from "react-chessboard";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { describeResult, GameOverDialog } from "@/components/match/game-over-dialog";
 import { MoveList, type HistoryMove } from "@/components/match/move-list";
-import { PlayerBar } from "@/components/match/player-bar";
+import { PlayerCard } from "@/components/match/player-card";
 import { PromotionDialog } from "@/components/match/promotion-dialog";
 import { ErrorState, LoadingState } from "@/components/states";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { speedCategory } from "@/components/tournaments/tournament-form-dialog";
 import { useLiveMatch, type Promotion } from "@/hooks/use-live-match";
+import { formatDateTime } from "@/lib/format";
+import { materialFromFen } from "@/lib/material";
 import type { Color, MatchView } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const START_FEN = new Chess().fen();
 const LAST_MOVE = { background: "rgba(244, 123, 32, 0.35)" };
@@ -44,21 +45,35 @@ function useHistory(pgn: string): HistoryMove[] {
   }, [pgn]);
 }
 
-function StatusLine({ match, myColor, isMyTurn, pending }: { match: MatchView; myColor: Color | null; isMyTurn: boolean; pending: boolean }) {
-  if (match.status === "completed" && match.result && match.endReason) {
-    const r = describeResult(match.result, match.endReason, myColor);
-    return (
-      <p className="font-medium">
-        {r.title} <span className="font-normal text-muted-foreground">— {r.detail}</span>
-      </p>
-    );
+/** Status pill text + tone for the sidebar card */
+function statusPill(m: MatchView, myColor: Color | null, isMyTurn: boolean, pending: boolean) {
+  const move = Math.floor(m.ply / 2) + 1;
+  if (m.status === "completed" && m.result && m.endReason) {
+    const r = describeResult(m.result, m.endReason, myColor);
+    return { text: `${r.title} · ${r.detail.replace(/\.$/, "")}`, cls: "bg-amber-100 text-amber-900" };
   }
-  if (!myColor) return <p className="text-muted-foreground">Spectating · {match.turn === "white" ? "White" : "Black"} to move</p>;
-  if (pending) return <p className="text-muted-foreground">Sending move…</p>;
-  return isMyTurn ? (
-    <p className="font-medium text-brand-orange">Your turn</p>
-  ) : (
-    <p className="text-muted-foreground">Waiting for your opponent…</p>
+  if (!myColor) return { text: `Spectating · Move ${move}`, cls: "bg-sky-50 text-sky-800" };
+  if (pending) return { text: `Sending move…`, cls: "bg-[#f1ece2] text-muted-foreground" };
+  return isMyTurn
+    ? { text: `Your turn · Move ${move}`, cls: "bg-orange-100 text-[#b4510d]" }
+    : { text: `Opponent’s turn · Move ${move}`, cls: "bg-[#f1ece2] text-muted-foreground" };
+}
+
+function MaterialBar({ diff }: { diff: number }) {
+  // White's share of the bar: 50% when level, ±5% per pawn, capped
+  const white = 50 + Math.max(-45, Math.min(45, diff * 5));
+  return (
+    <div>
+      <div className="flex items-center justify-between font-mono text-xs">
+        <span className="font-semibold text-primary">
+          Material: {diff === 0 ? "even" : `${diff > 0 ? "White" : "Black"} +${Math.abs(diff)}`}
+        </span>
+        <span className="text-muted-foreground">{diff === 0 ? "Level" : diff > 0 ? "White ahead" : "Black ahead"}</span>
+      </div>
+      <div className="mt-2 flex h-2 overflow-hidden rounded-full border border-primary/20 bg-primary">
+        <span className="bg-white transition-all duration-500" style={{ width: `${white}%` }} />
+      </div>
+    </div>
   );
 }
 
@@ -77,6 +92,7 @@ export default function MatchPage() {
   const boardFen = live ? (g.displayFen ?? START_FEN) : viewPly === 0 ? START_FEN : (history[viewPly - 1]?.after ?? START_FEN);
   const interactive = live && g.isMyTurn && g.connected;
   const position = useMemo(() => new Chess(boardFen), [boardFen]);
+  const material = useMemo(() => materialFromFen(boardFen), [boardFen]);
 
   const targets = useMemo(() => {
     if (!selected || !interactive) return [] as { to: string; capture: boolean }[];
@@ -126,116 +142,151 @@ export default function MatchPage() {
   const offerFromOpponent = !!myColor && m.drawOffer && m.drawOffer !== myColor;
   const offerFromMe = !!myColor && m.drawOffer === myColor;
   const ongoing = m.status === "ongoing";
+  const pill = statusPill(m, myColor, g.isMyTurn, g.pending);
+  const tournamentHref = myColor ? `/student/tournaments/${m.tournament.id}` : `/coach/tournaments/${m.tournament.id}`;
 
-  const bar = (c: Color) => (
-    <PlayerBar
+  const card = (c: Color) => (
+    <PlayerCard
       name={player(c).name}
       color={c}
       isYou={myColor === c}
       ms={clockFor(c)}
       running={m.clock.running === c}
       receivedAt={g.receivedAt}
-      toMove={ongoing && m.turn === c}
+      toMove={m.turn === c}
+      live={ongoing}
+      captured={c === "white" ? material.capturedBy.white : material.capturedBy.black}
+      lead={c === "white" ? material.diff : -material.diff}
     />
   );
 
-  return (
-    <div className="space-y-4">
-      <Link
-        href={myColor ? `/student/tournaments/${m.tournament.id}` : `/coach/tournaments/${m.tournament.id}`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
-      >
-        <ArrowLeft className="size-4" /> {m.tournament.name}
-      </Link>
+  const tile =
+    "flex h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border bg-card text-sm font-semibold shadow-sm transition hover:shadow-md disabled:opacity-50 disabled:hover:shadow-sm";
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="mx-auto w-full max-w-[min(78vh,640px)] space-y-2">
-          {bar(top)}
-          <div className={!live ? "rounded-md ring-4 ring-brand-orange/60" : undefined}>
-            <Chessboard
-              options={{
-                id: `match-${m.id}`,
-                position: boardFen,
-                boardOrientation: orientation,
-                allowDragging: interactive,
-                squareStyles: styles,
-                darkSquareStyle: { backgroundColor: "#7c9cb8" },
-                lightSquareStyle: { backgroundColor: "#eef1e6" },
-                animationDurationInMs: 150,
-                canDragPiece: ({ piece }) => interactive && piece.pieceType[0] === myPrefix,
-                onPieceDrop: ({ piece, sourceSquare, targetSquare }) =>
-                  !!targetSquare && tryMove(sourceSquare, targetSquare, piece.pieceType),
-                onSquareClick: ({ piece, square }) => {
-                  if (!interactive) return;
-                  if (selected && targets.some((t) => t.to === square)) {
-                    const moving = position.get(selected as Square);
-                    if (moving) tryMove(selected, square, `${moving.color}${moving.type.toUpperCase()}`);
-                    return;
-                  }
-                  setSelected(piece && piece.pieceType[0] === myPrefix && square !== selected ? square : null);
-                },
-              }}
-            />
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+        {/* Board column */}
+        {/* Board column sized from the viewport height so both clocks are always visible without scrolling */}
+        <div className="mx-auto w-full max-w-[max(300px,min(calc(100dvh_-_19.5rem),720px))] min-w-0 space-y-3">
+          {card(top)}
+          <div className={cn("rounded-2xl border bg-card p-2 shadow-sm sm:p-3", !live && "ring-4 ring-brand-orange/50")}>
+            <div className="overflow-hidden rounded-xl">
+              <Chessboard
+                options={{
+                  id: `match-${m.id}`,
+                  position: boardFen,
+                  boardOrientation: orientation,
+                  allowDragging: interactive,
+                  squareStyles: styles,
+                  darkSquareStyle: { backgroundColor: "#7c9cb8" },
+                  lightSquareStyle: { backgroundColor: "#eef1e6" },
+                  animationDurationInMs: 150,
+                  canDragPiece: ({ piece }) => interactive && piece.pieceType[0] === myPrefix,
+                  onPieceDrop: ({ piece, sourceSquare, targetSquare }) =>
+                    !!targetSquare && tryMove(sourceSquare, targetSquare, piece.pieceType),
+                  onSquareClick: ({ piece, square }) => {
+                    if (!interactive) return;
+                    if (selected && targets.some((t) => t.to === square)) {
+                      const moving = position.get(selected as Square);
+                      if (moving) tryMove(selected, square, `${moving.color}${moving.type.toUpperCase()}`);
+                      return;
+                    }
+                    setSelected(piece && piece.pieceType[0] === myPrefix && square !== selected ? square : null);
+                  },
+                }}
+              />
+            </div>
           </div>
-          {bar(bottom)}
+          {card(bottom)}
           {!live && (
             <p className="text-center text-sm text-brand-orange">
               Reviewing move {viewPly} —{" "}
-              <button type="button" className="underline" onClick={() => setViewPly(null)}>
+              <button type="button" className="font-semibold underline" onClick={() => setViewPly(null)}>
                 back to live
               </button>
             </p>
           )}
         </div>
 
-        <aside className="space-y-4">
-          <Card>
-            <CardContent className="space-y-1 text-sm">
-              <StatusLine match={m} myColor={myColor} isMyTurn={g.isMyTurn} pending={g.pending} />
-              <p className="text-muted-foreground">
-                {m.timeControl.label} · {m.white.name} vs {m.black.name}
+        {/* Sidebar */}
+        <aside className="min-w-0 space-y-4">
+          <section className="rounded-2xl border bg-card p-5 shadow-sm">
+            <Link href={tournamentHref} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary">
+              <ArrowLeft className="size-4" /> Back to tournament
+            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cn("inline-flex rounded-full px-3 py-1 font-mono text-[11px] font-semibold tracking-[0.12em] uppercase", pill.cls)}>
+                {pill.text}
+              </span>
+              {!myColor && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 font-mono text-[11px] font-semibold text-sky-800">
+                  <Eye className="size-3.5" /> Spectating
+                </span>
+              )}
+            </div>
+            <h1 className="mt-3 text-2xl font-bold tracking-tight text-primary">
+              {m.tournament.name} <span className="font-mono text-lg text-muted-foreground">{m.timeControl.label}</span>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {m.white.name} (white) vs {m.black.name} (black)
+            </p>
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <Timer className="size-3.5 text-brand-orange" />
+                {speedCategory(m.timeControl.baseSeconds / 60, m.timeControl.incrementSeconds)}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="size-3.5" /> Started {formatDateTime(m.startedAt)}
+              </span>
+            </p>
+            <div className="mt-4">
+              <MaterialBar diff={material.diff} />
+            </div>
+
+            {!g.connected && ongoing && (
+              <p className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-800">
+                <WifiOff className="mt-0.5 size-4 shrink-0" />
+                Connection lost — reconnecting. Your clock keeps running on the server.
               </p>
-            </CardContent>
-          </Card>
-
-          {!g.connected && ongoing && (
-            <Alert variant="destructive">
-              <WifiOff />
-              <AlertDescription>Connection lost — reconnecting. Your clock keeps running on the server.</AlertDescription>
-            </Alert>
-          )}
-
-          {ongoing && offerFromOpponent && (
-            <Alert>
-              <Handshake />
-              <AlertDescription className="flex flex-wrap items-center gap-2">
-                Your opponent offers a draw.
-                <Button size="sm" onClick={() => g.respondDraw(true)}>
-                  Accept
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => g.respondDraw(false)}>
-                  Decline
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
+            )}
+            {ongoing && offerFromOpponent && (
+              <div className="mt-4 rounded-xl bg-orange-50 p-3">
+                <p className="flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Handshake className="size-4 text-brand-orange" /> Your opponent offers a draw
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={() => g.respondDraw(true)} className="h-9 flex-1 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+                    Accept
+                  </button>
+                  <button type="button" onClick={() => g.respondDraw(false)} className="h-9 flex-1 rounded-lg bg-white text-sm font-semibold text-primary hover:bg-accent">
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
+            {ongoing && offerFromMe && <p className="mt-4 rounded-xl bg-[#f6f2ea] p-3 text-sm text-muted-foreground">Draw offered — waiting for your opponent…</p>}
+          </section>
 
           <MoveList moves={history} pgn={m.pgn} viewPly={viewPly} onViewPly={setViewPly} />
 
-          <div className="flex flex-wrap gap-2">
+          <div className={cn("grid gap-3", myColor && ongoing ? "grid-cols-3" : "grid-cols-1")}>
             {myColor && ongoing && (
               <>
-                <Button variant="outline" size="sm" disabled={offerFromMe || !g.connected} onClick={() => g.offerDraw()}>
-                  <Handshake /> {offerFromMe ? "Draw offered" : "Offer draw"}
-                </Button>
-                <Button variant="outline" size="sm" className="text-destructive" disabled={!g.connected} onClick={() => setConfirmResign(true)}>
-                  <Flag /> Resign
-                </Button>
+                <button type="button" className={cn(tile, "text-primary")} disabled={offerFromMe || !g.connected} onClick={() => g.offerDraw()}>
+                  <Handshake className="size-5" />
+                  {offerFromMe ? "Offered" : "Offer draw"}
+                </button>
+                <button type="button" className={cn(tile, "text-red-600")} disabled={!g.connected} onClick={() => setConfirmResign(true)}>
+                  <Flag className="size-5" />
+                  Resign
+                </button>
               </>
             )}
-            <Button variant="ghost" size="sm" onClick={() => setFlipped((f) => !f)}>
-              <RefreshCw /> Flip board
-            </Button>
+            <button type="button" className={cn(tile, "text-primary")} onClick={() => setFlipped((f) => !f)}>
+              <RefreshCw className="size-5" />
+              Flip board
+            </button>
           </div>
         </aside>
       </div>
