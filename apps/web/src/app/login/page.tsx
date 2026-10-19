@@ -168,10 +168,13 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // Until React is interactive, a click would fall back to a native form submit — keep the button disabled
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     setEmail(emailRef.current?.value ?? "");
     setPassword(passwordRef.current?.value ?? "");
+    setReady(true);
   }, []);
 
   const fill = (e: string, p: string) => {
@@ -196,6 +199,8 @@ function LoginForm() {
       <p className="mt-1.5 text-sm text-muted-foreground">Use your academy email, or pick a demo account below.</p>
 
       <form
+        // POST, never GET: even a pre-hydration native submit must not put credentials in the URL
+        method="post"
         className="mt-6 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
@@ -265,7 +270,7 @@ function LoginForm() {
 
         <button
           type="submit"
-          disabled={login.isPending || login.isSuccess}
+          disabled={!ready || login.isPending || login.isSuccess}
           className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold tracking-[0.12em] text-primary-foreground uppercase shadow-lg shadow-primary/20 transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-brand-orange/40 focus-visible:outline-none disabled:opacity-70"
         >
           {login.isPending ? "Signing in…" : login.isSuccess ? "Redirecting…" : "Sign in"}
